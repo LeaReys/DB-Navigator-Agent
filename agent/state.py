@@ -44,4 +44,4 @@ class AgentState(TypedDict, total=False):
 
     # = Служебные поля ====================
     error: str | None             # текст ошибки, если что-то пошло не так
-    steps: Annotated[list[dict[str, Any]], add]     # трейс шагов
+    steps: Annotated[list[str], add]     # трейс шагов

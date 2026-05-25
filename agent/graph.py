@@ -10,6 +10,13 @@ from __future__ import annotations
 
 from langgraph.graph import StateGraph, END
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from state import AgentState
 from schemes.models import QueryType, ToolStatus
 from nodes import (
@@ -160,9 +167,9 @@ def run(user_query: str) -> AgentState:
 
 if __name__ == "__main__":
     test_queries = [
-        "Где найти информацию по статусу должника?",   # → NAVIGATION
+        "Где найти информацию по статусу должника?",    # → NAVIGATION
         "Какая структура таблицы debt?",                # → SCHEMA
-        "Напиши скрипт для последней даты платежа",    # → SCRIPT
+        "Напиши скрипт для последней даты платежа",     # → SCRIPT
         "Какой статус у должника с id 123?",            # → DATA
     ]
 

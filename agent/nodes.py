@@ -37,9 +37,8 @@ from schemes.models import (
 # ===============================
 
 def _add_step(state: AgentState, step: str) -> list[str]:
-    """Возвращает обновлённый список шагов для логирования."""
-    current_steps = state.get("steps", [])
-    return current_steps + [step]
+    """Возвращает список новых шагов (для слияния оператором add)."""
+    return [step]
 
 
 # ===============================

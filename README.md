@@ -108,7 +108,7 @@ db_navigator/
 │   ├── schema_tool.py      # get_table_schema
 │   └── sql_tool.py         # execute_query
 ├── rag/
-│   ├── indexer.py          # индексация схемы в ChromaDB
+│   ├── indexer.py          # индексация схемы в ChromaDB/FAISS
 │   └── retriever.py        # поиск по вектору
 ├── db/
 │   └── connector.py        # pyodbc соединения (multi-server)
