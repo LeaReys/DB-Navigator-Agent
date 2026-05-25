@@ -2,7 +2,7 @@
 
 ## 1. Концепция агента
 
-**DB Navigator Agent** — AI-агент для backend-разработчика, который помогает быстро ориентироваться в MS SQL Server базах данных: находить нужные таблицы и поля, понимать структуру таблиц, генерировать безопасные read-only T-SQL запросы и получать простые ответы из БД.
+**DB Navigator Agent** - AI-агент для backend-разработчика, который помогает быстро ориентироваться в MS SQL Server базах данных: находить нужные таблицы и поля, понимать структуру таблиц, генерировать безопасные read-only T-SQL запросы и получать простые ответы из БД.
 
 В текущем промежуточном каркасе реальные подключения к БД заменены dummy-данными, чтобы показать сам workflow.  
 Далее будет добавлены:
@@ -10,12 +10,12 @@
 - Взаимодействие с LLM (во внутреннем контуре Ollama, для теста OpenRouter)
 
 ### 1.1. Маленькое пояснение (зато честно):
-Так как время крайне ограничено (+ все мы рабочие люди), то этот демо-проект в основном писал GPT. Самостоятельно я только придумала основную структуру и реализовала сам граф и стейт, а GPT попросила уже сделать dummy тулы/раг/и тд. 
+Так как время крайне ограничено (+ все мы рабочие люди), то этот демо-проект в основном писал GPT (в ветке main). Самостоятельно я только придумала основную структуру и реализовала сам граф и стейт, а GPT попросила уже сделать dummy тулы/раг/и тд. 
 Так как это первый мой агент, то он может быть реализован не профессионально. Но так как идея проекта - личная рабочая боль, то хочется в дальнейшем его добить до +- рабочей версии, а не оставлять в рамках учебного проекта.
 
 ## 2. Пользователь
 
-Основной пользователь — backend-разработчик в банковской сфере, которому часто нужно быстро понять:
+Основной пользователь - backend-разработчик, которому часто нужно быстро понять:
 
 - где хранится нужная бизнес-информация;
 - какая структура у таблицы;
@@ -24,66 +24,57 @@
 
 ## 3. Минимальный LangGraph-каркас
 
-В каркасе есть `AgentState`, несколько узлов с планируемой логикой, условные переходы и подключенные tools.
+В каркасе реализован стейт, несколько узлов с планируемой логикой, условные переходы и подключенные tools.
 
 ### State
 
 Основные поля состояния:
 
-- `question` — вопрос пользователя;
-- `intent` — тип запроса (результат классификации);
-- `retrieved_context` — найденный контекст по БД (в дальнейшем RAG);
-- `generated_sql` — сгенерированный SQL;
-- `sql_validation_status` — результат проверки SQL;
+- `user_query` — исходный вопрос пользователя;
+- `classification` — тип запроса (результат классификации роутера 1);
+- `metadata_result` — найденный контекст по БД (выход RAG-поиска);
+- `schema_result` — выход get_table_schema
+- `sql_result` — сгенерированный SQL (выход generate_sql);
+- `execute_result` — результат выполнения SQL (выход execute_query);
 - `tool_results` — история вызовов tools;
-- `final_answer` — итоговый ответ.
+- `final_response` — итоговый ответ;
+
+- `sql_validation_status` (добавить в дальнейшем) — результат проверки SQL;
 
 ### Узлы графа
 
 - `classify_intent` — определяет тип запроса;
-- `retrieve_schema` — ищет таблицы и поля в БД;
-- `generate_answer` — формирует ответ или SQL;
-- `validate_sql` — проверяет, что SQL read-only;
-- `execute_sql` — выполняет SELECT;
-- `refuse` — безопасно отказывает в unsafe-запросах;
-- `ask_clarification` — просит уточнение;
-- `save_answer` — сохраняет ответ в файл.
+- `search_metadata_node` — ищет таблицы и поля в БД;
+- `get_schema` — формирует ответ или SQL;
+- `generate_sql` — проверяет, что SQL read-only;
+- `execute_query` — выполняет SELECT;
+- `format_response` — безопасно отказывает в unsafe-запросах;
+- `handle_unknown` — просит уточнение;
 
-### Tools
 
-- `schema_search_tool` — аналог RAG-поиска по схеме БД;
-- `db_metadata_tool` — аналог metadata-запроса к SQL Server;
-- `validate_readonly_sql_tool` — проверка безопасности SQL;
-- `readonly_sql_tool` — аналог выполнения SQL запроса;
-- `file_export_tool` — сохранение результата в файл.
+### Tools (планируется)
+
+- `metadata_search` — RAG-поиск;
+- `schema_tool` — получения структуры таблицы из SQL Server;
+- `sql_tool` — выполнения SQL-запросов;
 
 ## 4. Схема графа
 
 ```text
-START
-  -> classify_intent
-      -> unsafe_request        -> refuse -> save_answer -> END
-      -> clarification_needed  -> ask_clarification -> save_answer -> END
-      -> other                 -> retrieve_schema
-  -> generate_answer
-      -> no SQL                -> save_answer -> END
-      -> SQL generated         -> validate_sql
-  -> validate_sql
-      -> unsafe/ambiguous      -> refuse -> save_answer -> END
-      -> safe + live question  -> execute_sql -> save_answer -> END
-      -> safe + sql generation -> save_answer -> END
+
 ```
 
-## 5. Edge cases
+## 5. Edge cases (Заложить)
 
 Ожидаемые edge cases:
 
 1. Пользователь просит изменить данные: `UPDATE`, `DELETE`, `INSERT`.
 2. Пользователь задает слишком общий вопрос без названия таблицы или бизнес-термина.
 3. Запрошенный бизнес-термин отсутствует в metadata/RAG.
-4. SQL сгенерирован, но не проходит read-only validation.
+4. SQL сгенерирован, но не проходит валидацию.
 5. Запрос к БД не возвращает строк.
 6. Есть несколько похожих таблиц-кандидатов, и нужен уточняющий вопрос.
+7. Уточняющий вопрос по серверу или БД.
 
 ## 6. Критерии качества
 
@@ -92,7 +83,7 @@ START
 - правильно классифицирует тип запроса;
 - находит релевантные таблицы и колонки по бизнес-вопросу;
 - не выполняет unsafe SQL;
-- генерирует только read-only T-SQL;
+- генерирует только read-only SQL;
 - объясняет, из каких таблиц и полей взят ответ;
 - проходит benchmark минимум из 10 тестовых вопросов;
 - имеет понятные LangFuse traces и tool-call историю.
@@ -100,28 +91,39 @@ START
 ## 7. Как запустить demo
 
 ```bash
-pip install -r requirements.txt
-python -m app.main "Где найти информацию по статусу должника?"
-python -m app.main "Какая структура таблицы debt?"
-python -m app.main "Нужен SQL для получения последней даты платежа по каждому должнику"
-python -m app.main "Какой актуальный статус у должника с id 123?"
-python -m app.main "Обнови статус должника 123 на CLOSED"
+python .\agent\graph.py
 ```
 
-Для просмотра полного состояния:
+## 8. Структура проекта
 
-```bash
-python -m app.main "Какой актуальный статус у должника с id 123?" --json
-```
+db_navigator/
+├── agent/
+│   ├── graph.py            # LangGraph граф
+│   ├── nodes.py            # логика каждого узла
+│   └── state.py            # AgentState (TypedDict)
+├── schemes/
+│   └── models.py           # pydentic
+├── tools/
+│   ├── metadata_search.py  # RAG tool
+│   ├── schema_tool.py      # get_table_schema
+│   └── sql_tool.py         # execute_query
+├── rag/
+│   ├── indexer.py          # индексация схемы в ChromaDB
+│   └── retriever.py        # поиск по вектору
+├── db/
+│   └── connector.py        # pyodbc соединения (multi-server)
+├── config.py               # серверы, БД, параметры
+├── app.py                  # Streamlit UI
+├── benchmark/
+│   └── test_cases.json     # 10+ тестовых запросов
+└── README.md
 
-## 8. Что будет расширено дальше
-
-После промежуточного отчета каркас будет расширен до полноценного MVP:
+## 9. Что будет расширено дальше
 
 - подключение OpenRouter/Ollama;
 - RAG по схеме БД;
 - реальный `pyodbc` metadata tool;
-- read-only SQL execution через SQL Server user с ограниченными правами;
+- read-only SQL  через SQL Server с ограниченными правами;
 - LangFuse;
 - benchmark и evals;
 - security-checklist;
