@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from state import AgentState
+from agent.state import AgentState
 from schemes.models import (
     QueryType,
     ClassificationResult,

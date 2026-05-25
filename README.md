@@ -90,7 +90,7 @@
 ## 7. Как запустить demo
 
 ```bash
-python .\agent\graph.py
+python app.py
 ```
 
 ## 8. Структура проекта
