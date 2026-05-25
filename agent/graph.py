@@ -23,6 +23,7 @@ from agent.nodes import (
     execute_query_node,
     format_response_node,
     handle_unknown_node,
+    unsafe_query_node,
 )
 
 
@@ -45,6 +46,7 @@ def route_by_query_type(state: AgentState) -> str:
         QueryType.SCRIPT:     "generate_sql",
         QueryType.DATA:       "generate_sql",       # DATA тоже начинает с генерации SQL
         QueryType.UNKNOWN:    "handle_unknown",
+        QueryType.UNSAFE:     "unsafe_query",
     }
 
     next_node = route_map.get(classification.query_type, "handle_unknown")
@@ -102,6 +104,7 @@ def build_graph() -> StateGraph:
     graph.add_node("execute_query",      execute_query_node)
     graph.add_node("format_response",    format_response_node)
     graph.add_node("handle_unknown",     handle_unknown_node)
+    graph.add_node("unsafe_query",       unsafe_query_node)
 
     # = Точка входа =====================
     graph.set_entry_point("classify_intent")
@@ -115,6 +118,7 @@ def build_graph() -> StateGraph:
             "get_schema":      "get_schema",
             "generate_sql":    "generate_sql",
             "handle_unknown":  "handle_unknown",
+            "unsafe_query":    "unsafe_query",
         },
     )
 
@@ -140,7 +144,7 @@ def build_graph() -> StateGraph:
     # = Финальные узлы → END =================
     graph.add_edge("format_response", END)
     graph.add_edge("handle_unknown",  END)
-
+    graph.add_edge("unsafe_query",    END)
     return graph.compile()
 
 

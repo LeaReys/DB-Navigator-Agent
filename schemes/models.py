@@ -20,6 +20,7 @@ class QueryType(str, Enum):
     SCRIPT     = "script"       # "Напиши скрипт для X"
     DATA       = "data"         # "Какой статус у должника 123?"
     UNKNOWN    = "unknown"      # не удалось классифицировать
+    UNSAFE     = "unsafe"       # содержит просьбы об изменениях/удалениях
     
 
 
@@ -42,7 +43,7 @@ class ClassificationResult(BaseModel):
 class ToolStatus(str, Enum):
     SUCCESS = "success"
     ERROR   = "error"
-    EMPTY   = "empty"   # запрос выполнен, но данных нет
+    EMPTY   = "empty"       # запрос выполнен, но данных нет
 
 
 class ToolResult(BaseModel):
@@ -163,34 +164,3 @@ class AgentResponse(BaseModel):
     has_data:    bool  = False  # True если вернулись реальные данные из БД
 
     model_config = {"use_enum_values": True}
-
-
-# =============================================
-# 4. СОСТОЯНИЕ ГРАФА (AgentState)
-# =============================================
-
-class AgentState(BaseModel):
-    """
-    Общий стейт LangGraph.
-    Передаётся между узлами графа — каждый узел читает нужные поля
-    и добавляет свои результаты.
-    """
-    # --- Вход ---
-    user_query: str
-
-    # --- Промежуточные результаты ---
-    classification:    ClassificationResult | None = None
-    metadata_result:   MetadataSearchResult | None = None
-    schema_result:     TableSchemaResult    | None = None
-    sql_result:        SQLGenerationResult  | None = None
-    execute_result:    ExecuteQueryResult   | None = None
-
-    # --- Выход ---
-    final_response:    AgentResponse        | None = None
-
-    # --- Мета ---
-    error:             str | None = None
-    steps:             list[str]  = Field(default_factory=list)
-
-    def add_step(self, step: str) -> None:
-        self.steps.append(step)

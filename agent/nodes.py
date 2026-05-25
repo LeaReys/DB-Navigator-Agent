@@ -57,7 +57,9 @@ def classify_intent(state: AgentState) -> dict:
     # = ЗАГЛУШКА: простая keyword-классификация для теста ==
     query_lower = query.lower()
 
-    if any(kw in query_lower for kw in ["где", "найти", "в какой", "какая таблица"]):
+    if any(kw in query_lower for kw   in ["удали", "измени", "очисти", "del", "upd"]):
+        query_type = QueryType.UNSAFE
+    elif any(kw in query_lower for kw in ["где", "найти", "в какой", "какая таблица"]):
         query_type = QueryType.NAVIGATION
     elif any(kw in query_lower for kw in ["структура", "колонки", "поля", "схема"]):
         query_type = QueryType.SCHEMA
@@ -335,6 +337,24 @@ def format_response_node(state: AgentState) -> dict:
         "steps": _add_step(state, "format_response"),
     }
 
+
+def unsafe_query_node(state: AgentState) -> dict:
+    """Отвечает пользователю, если запрос содержит запрещенный запрос."""
+    print("\n[handle_unknown] Запрос не классифицирован")
+
+    final = AgentResponse(
+        answer=(
+            "Запрос содержит запрещенные SQL-действия.\n"
+            "Агенту разрешено выполнять запросы только на чтение."
+        ),
+        query_type=QueryType.UNSAFE,
+        confidence=0.0,
+    )
+
+    return {
+        "final_response": final,
+        "steps": _add_step(state, "unsafe_query"),
+    }
 
 # ===============================
 # УЗЕЛ-ЗАГЛУШКА: обработка неизвестного запроса
