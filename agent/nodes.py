@@ -13,119 +13,109 @@
 """
 
 from __future__ import annotations
-
+ 
+import logging
+ 
+from langchain_core.messages import HumanMessage, SystemMessage
+ 
 from agent.state import AgentState
 from schemes.models import (
     QueryType,
     ClassificationResult,
-    MetadataSearchResult,
-    MetadataChunk,
-    TableSchemaResult,
-    ColumnInfo,
     ToolStatus,
     SQLGenerationResult,
     GeneratedSQL,
     ExecuteQueryResult,
-    QueryRow,
     AgentResponse,
     SourceReference,
 )
+from tools.metadata_search import search_metadata
+from tools.schema_tool import get_table_schema
+from tools.sql_tool import execute_query
+from config import settings
+ 
+logger = logging.getLogger(__name__)
 
 
 # ===============================
-# Вспомогательная функция: добавить шаг в лог
+# Вспомогательные функции
 # ===============================
 
 def _add_step(state: AgentState, step: str) -> list[str]:
-    """Возвращает список новых шагов (для слияния оператором add)."""
+    """Возвращает список с одним шагом"""
     return [step]
+
+
+def _resolve_target(state: AgentState) -> tuple[str, str]:
+    """
+    Определяет (server_alias, database) для execute_query.
+    Приоритет: metadata_result → schema_result → первый из конфига.
+    """
+    if meta := state.get("metadata_result"):
+        if meta.chunks:
+            top = meta.chunks[0]
+            return top.server, top.database
+ 
+    if schema := state.get("schema_result"):
+        if schema.server and schema.database:
+            return schema.server, schema.database
+ 
+    first = settings.servers[0]
+    return first.alias, first.databases[0].name
 
 
 # ===============================
 # УЗЕЛ 1: Классификация запроса (роутер 1)
 # ===============================
-
 def classify_intent(state: AgentState) -> dict:
     """
-    Определяет тип запроса пользователя.
-    
-    Позже здесь будет вызов малой LLM 
+    Классифицирует запрос через structured output малой LLM.
+    При ошибке LLM — не роняем агента, возвращаем UNKNOWN.
     """
+    from llm.llm import get_llm
+    from llm.prompts import CLASSIFY_SYSTEM, CLASSIFY_USER
+ 
     query = state["user_query"]
-    print(f"\n[classify_intent] Запрос: '{query}'")
-
-    # = ЗАГЛУШКА: простая keyword-классификация для теста ==
-    query_lower = query.lower()
-
-    if any(kw in query_lower for kw   in ["удали", "измени", "очисти", "del", "upd"]):
-        query_type = QueryType.UNSAFE
-    elif any(kw in query_lower for kw in ["где", "найти", "в какой", "какая таблица"]):
-        query_type = QueryType.NAVIGATION
-    elif any(kw in query_lower for kw in ["структура", "колонки", "поля", "схема"]):
-        query_type = QueryType.SCHEMA
-    elif any(kw in query_lower for kw in ["напиши", "скрипт", "запрос", "sql"]):
-        query_type = QueryType.SCRIPT
-    elif any(kw in query_lower for kw in ["статус", "данные", "id", "покажи"]):
-        query_type = QueryType.DATA
-    else:
-        query_type = QueryType.UNKNOWN
-
-    result = ClassificationResult(
-        query_type=query_type,
-        confidence=0.2,
-        reasoning=f"Определён тип {query_type} по ключевым словам",
-        mentioned_tables=[],
-        mentioned_entities=[],
-    )
-
-    print(f"[classify_intent] Тип: {result.query_type}, уверенность: {result.confidence}")
-
+    logger.info(f"[classify_intent] '{query}'")
+ 
+    try:
+        chain = get_llm("small").with_structured_output(ClassificationResult)
+        result: ClassificationResult = chain.invoke([
+            SystemMessage(content=CLASSIFY_SYSTEM),
+            HumanMessage(content=CLASSIFY_USER.format(query=query)),
+        ])
+        logger.info(f"[classify_intent] → {result.query_type} (conf={result.confidence})")
+ 
+    except Exception as e:
+        logger.error(f"[classify_intent] LLM error: {e}")
+        result = ClassificationResult(
+            query_type        = QueryType.UNKNOWN,
+            confidence        = 0.0,
+            reasoning         = f"Ошибка классификации: {e}",
+            mentioned_tables  = [],
+            mentioned_entities= [],
+        )
+ 
     return {
         "classification": result,
-        "steps": _add_step(state, "classify_intent"),
+        "steps": _add_step(state, f"classify_intent:{result.query_type}"),
     }
-
+ 
 
 # ===============================
 # УЗЕЛ 2: RAG-поиск по метаданным (ветка NAVIGATION)
 # ===============================
-
 def search_metadata_node(state: AgentState) -> dict:
     """
-    RAG по метаданным БД.
-    
-    Позже здесь будет полноценный RAG
+    Поиск релевантных таблиц по запросу пользователя.
+    Fallback на SQL LIKE.
     """
     query = state["user_query"]
-    print(f"\n[search_metadata] Ищем: '{query}'")
-
-    # = ЗАГЛУШКА: возвращаем тестовый результат =======
-    result = MetadataSearchResult(
-        status=ToolStatus.SUCCESS,
-        tool_name="search_metadata",
-        query=query,
-        chunks=[
-            MetadataChunk(
-                table_name="debt",
-                server="PROD",
-                database="ProdDB",
-                description="Таблица должников. Хранит основные данные по долгу.",
-                score=0.91,
-                columns=["id", "debtor_id", "status", "amount", "created_at"],
-            ),
-            MetadataChunk(
-                table_name="debtor_status_history",
-                server="PROD",
-                database="ProdDB",
-                description="История смены статусов должника.",
-                score=0.78,
-                columns=["id", "debtor_id", "status", "changed_at"],
-            ),
-        ],
-    )
-
-    print(f"[search_metadata] Найдено чанков: {len(result.chunks)}")
-
+    logger.info(f"[search_metadata] '{query}'")
+ 
+    result = search_metadata(query)
+ 
+    logger.info(f"[search_metadata] статус={result.status}, чанков={len(result.chunks)}")
     return {
         "metadata_result": result,
         "steps": _add_step(state, "search_metadata"),
@@ -135,246 +125,229 @@ def search_metadata_node(state: AgentState) -> dict:
 # ===============================
 # УЗЕЛ 3: Получение схемы таблицы (ветка SCHEMA)
 # ===============================
-
 def get_schema_node(state: AgentState) -> dict:
     """
-    Запрашивает структуру таблицы из MS SQL.
+    Получает структуру таблицы из MS SQL через sys.columns.
+    
+    Таблицу и сервер извлекаем из classification.mentioned_tables.
+    Если классификатор не нашёл таблицу — пробуем найти через
+    search_metadata и берём первый результат.
     """
-    query = state["user_query"]
-    print(f"\n[get_schema] Запрос схемы для: '{query}'")
-
-    # = ЗАГЛУШКА =======================
-    result = TableSchemaResult(
-        status=ToolStatus.SUCCESS,
-        tool_name="get_table_schema",
-        server="PROD",
-        database="ProdDB",
-        table="debt",
-        columns=[
-            ColumnInfo(name="id",         data_type="int",          is_nullable=False, is_pk=True),
-            ColumnInfo(name="debtor_id",  data_type="int",          is_nullable=False, is_fk=True),
-            ColumnInfo(name="status",     data_type="varchar(50)",  is_nullable=False),
-            ColumnInfo(name="amount",     data_type="decimal(18,2)",is_nullable=False),
-            ColumnInfo(name="created_at", data_type="datetime",     is_nullable=False),
-            ColumnInfo(name="updated_at", data_type="datetime",     is_nullable=True),
-        ],
-        row_count=150_420,
-    )
-
-    print(f"[get_schema] Таблица: {result.table}, колонок: {len(result.columns)}")
-
-    return {
-        "schema_result": result,
-        "steps": _add_step(state, "get_schema"),
-    }
+    from schemes.models import TableSchemaResult
+ 
+    query          = state["user_query"]
+    classification = state.get("classification")
+    logger.info(f"[get_schema] '{query}'")
+ 
+    mentioned = classification.mentioned_tables if classification else []
+ 
+    if mentioned:
+        table    = mentioned[0]
+        server   = settings.servers[0].alias
+        database = settings.servers[0].databases[0].name
+    else:
+        meta = search_metadata(query, top_k=1)
+        if meta.chunks:
+            top      = meta.chunks[0]
+            table    = top.table_name
+            server   = top.server
+            database = top.database
+        else:
+            result = TableSchemaResult(
+                status=ToolStatus.EMPTY, tool_name="get_table_schema",
+                server="", database="", table="",
+                error_msg="Не удалось определить таблицу из запроса",
+            )
+            return {"schema_result": result, "steps": _add_step(state, "get_schema:not_found")}
+ 
+    result = get_table_schema(server, database, table)
+    logger.info(f"[get_schema] {result.table}: {len(result.columns)} колонок, статус={result.status}")
+    return {"schema_result": result, "steps": _add_step(state, "get_schema")}
 
 
 # ===============================
 # УЗЕЛ 4: Генерация SQL (ветки SCRIPT и DATA)
 # ===============================
-
 def generate_sql_node(state: AgentState) -> dict:
     """
     Генерирует SQL-скрипт по запросу пользователя.
     
     Позже здесь будет LLM для генерации
     """
+    from llm.llm import get_llm
+    from llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER, build_schema_context
+ 
     query = state["user_query"]
-    print(f"\n[generate_sql] Генерируем SQL для: '{query}'")
-
-    # = ЗАГЛУШКА =======================
+    logger.info(f"[generate_sql] '{query}'")
+ 
+    # Обогащаем контекст если нет metadata_result (DATA-ветка)
+    current_state = dict(state)
+    if not current_state.get("metadata_result"):
+        meta = search_metadata(query, top_k=3)
+        if meta.chunks:
+            current_state["metadata_result"] = meta
+ 
+    schema_context = build_schema_context(current_state)
+ 
     try:
-        generated = GeneratedSQL(
-            sql=(
-                "SELECT d.id, d.status, MAX(p.payment_date) AS last_payment_date\n"
-                "FROM debt d\n"
-                "LEFT JOIN payments p ON p.debt_id = d.id\n"
-                "WHERE d.debtor_id = :debtor_id\n"
-                "GROUP BY d.id, d.status"
-            ),
-            explanation="Скрипт возвращает последнюю дату платежа в разрезе должника.",
-            is_safe=True,
-            tables_used=["debt", "payments"],
-        )
+        chain = get_llm("large").with_structured_output(GeneratedSQL)
+        generated: GeneratedSQL = chain.invoke([
+            SystemMessage(content=GENERATE_SQL_SYSTEM),
+            HumanMessage(content=GENERATE_SQL_USER.format(
+                query=query,
+                schema_context=schema_context,
+            )),
+        ])
         result = SQLGenerationResult(
-            status=ToolStatus.SUCCESS,
-            tool_name="generate_sql",
-            generated=generated,
+            status=ToolStatus.SUCCESS, tool_name="generate_sql", generated=generated,
         )
+        logger.info(f"[generate_sql] is_safe={generated.is_safe}, tables={generated.tables_used}")
+ 
     except ValueError as e:
-        # Pydantic-валидатор поймает мутирующие операторы
+        # Pydantic-валидатор поймал мутирующий оператор
+        logger.warning(f"[generate_sql] unsafe SQL rejected: {e}")
         result = SQLGenerationResult(
-            status=ToolStatus.ERROR,
-            tool_name="generate_sql",
-            error_msg=str(e),
+            status=ToolStatus.ERROR, tool_name="generate_sql",
+            error_msg=f"SQL содержит запрещённые операторы: {e}",
         )
-
-    print(f"[generate_sql] Статус: {result.status}")
-
+    except Exception as e:
+        logger.error(f"[generate_sql] LLM error: {e}")
+        result = SQLGenerationResult(
+            status=ToolStatus.ERROR, tool_name="generate_sql",
+            error_msg=f"Ошибка генерации SQL: {e}",
+        )
+ 
     return {
-        "sql_result": result,
-        "steps": _add_step(state, "generate_sql"),
+        "sql_result":      result,
+        "metadata_result": current_state.get("metadata_result"),
+        "steps":           _add_step(state, f"generate_sql:{result.status}"),
     }
 
 
 # ===============================
 # УЗЕЛ 5: Выполнение SQL (только ветка DATA, ветвление 2)
 # ===============================
-
 def execute_query_node(state: AgentState) -> dict:
     """
-    Выполняет SQL-запрос через pyodbc и возвращает данные.
+    Выполняет SELECT через pyodbc с лимитом строк и защитой от мутаций
     """
     sql_result = state.get("sql_result")
+ 
     if not sql_result or not sql_result.generated:
         return {
             "execute_result": ExecuteQueryResult(
-                status=ToolStatus.ERROR,
-                tool_name="execute_query",
-                sql="",
-                error_msg="SQL не был сгенерирован",
+                status=ToolStatus.ERROR, tool_name="execute_query",
+                sql="", error_msg="SQL не был сгенерирован",
             ),
-            "steps": _add_step(state, "execute_query:error"),
+            "steps": _add_step(state, "execute_query:no_sql"),
         }
-
-    sql = sql_result.generated.sql
-    print(f"\n[execute_query] Выполняем:\n{sql}")
-
-    # = ЗАГЛУШКА =======================
-    result = ExecuteQueryResult(
-        status=ToolStatus.SUCCESS,
-        tool_name="execute_query",
-        sql=sql,
-        columns=["id", "status", "last_payment_date"],
-        rows=[
-            QueryRow(data={"id": 123, "status": "active", "last_payment_date": "2025-03-15"}),
-        ],
-        row_count=1,
-        truncated=False,
-    )
-
-    print(f"[execute_query] Строк получено: {result.row_count}")
-
+ 
+    sql              = sql_result.generated.sql
+    server, database = _resolve_target(state)
+ 
+    logger.info(f"[execute_query] {server}/{database}")
+    result = execute_query(server, database, sql)
+    logger.info(f"[execute_query] статус={result.status}, строк={result.row_count}")
+ 
     return {
         "execute_result": result,
-        "steps": _add_step(state, "execute_query"),
+        "steps": _add_step(state, f"execute_query:{result.status}"),
     }
 
+# ===============================
+# УЗЕЛ 6: Обработка небезопасного запроса
+# ===============================
+def unsafe_query_node(state: AgentState) -> dict:
+    """Блокирует запросы на изменение данных."""
+
+    logger.warning(f"[unsafe_query] заблокирован: '{state.get('user_query')}'")
+    final = AgentResponse(
+        answer=(
+            "Запрос заблокирован: агент работает только в режиме чтения.\n"
+            "Операции INSERT, UPDATE, DELETE, DROP и подобные не поддерживаются."
+        ),
+        query_type=QueryType.UNSAFE,
+        confidence=1.0,
+    )
+    return {"final_response": final, "steps": _add_step(state, "unsafe_query:blocked")}
+
 
 # ===============================
-# УЗЕЛ 6: Форматирование финального ответа
+# УЗЕЛ 7: Форматирование финального ответа
 # ===============================
-
 def format_response_node(state: AgentState) -> dict:
     """
-    Собирает финальный ответ из результатов предыдущих узлов.
-    
-    Позже здесь будет LLM для красивого ответа.
+    Формирует финальный ответ через малую LLM.
+    Fallback — собирает ответ из контекста без LLM.
     """
-    print("\n[format_response] Формируем финальный ответ...")
-
+    from llm.llm import get_llm
+    from llm.prompts import FORMAT_SYSTEM, FORMAT_USER, build_results_context
+ 
+    query          = state.get("user_query", "")
     classification = state.get("classification")
-    query_type = classification.query_type if classification else QueryType.UNKNOWN
-
-    # Определяем источники и формируем текст ответа
+    query_type     = classification.query_type if classification else QueryType.UNKNOWN
+ 
+    logger.info(f"[format_response] тип={query_type}")
+ 
+    try:
+        response = get_llm("small").invoke([
+            SystemMessage(content=FORMAT_SYSTEM),
+            HumanMessage(content=FORMAT_USER.format(
+                query=query,
+                results_context=build_results_context(state),
+            )),
+        ])
+        answer = response.content.strip()
+    except Exception as e:
+        logger.error(f"[format_response] LLM error: {e}")
+        answer = build_results_context(state)  # текстовый fallback
+ 
+    # Собираем метаданные ответа
     sources: list[SourceReference] = []
-    answer_parts: list[str] = []
     sql_text: str | None = None
     has_data = False
-
-    if metadata_result := state.get("metadata_result"):
-        for chunk in metadata_result.chunks:
-            answer_parts.append(
-                f"• Таблица `{chunk.table_name}` ({chunk.database}): {chunk.description}"
-            )
+ 
+    if meta := state.get("metadata_result"):
+        for chunk in meta.chunks:
             sources.append(SourceReference(
-                server=chunk.server,
-                database=chunk.database,
-                table=chunk.table_name,
+                server=chunk.server, database=chunk.database, table=chunk.table_name,
             ))
-
-    if schema_result := state.get("schema_result"):
-        cols = ", ".join(f"`{c.name}` ({c.data_type})" for c in schema_result.columns)
-        answer_parts.append(
-            f"Таблица `{schema_result.table}` содержит {len(schema_result.columns)} колонок:\n{cols}"
-        )
-        sources.append(SourceReference(
-            server=schema_result.server,
-            database=schema_result.database,
-            table=schema_result.table,
-        ))
-
-    if sql_result := state.get("sql_result"):
-        if sql_result.generated:
-            sql_text = sql_result.generated.sql
-            answer_parts.append(f"SQL-скрипт сгенерирован.\n{sql_result.generated.explanation}")
-
-    if execute_result := state.get("execute_result"):
-        if execute_result.status == ToolStatus.SUCCESS:
-            has_data = True
-            rows_preview = execute_result.rows[:5]  # не больше 5 строк в ответ
-            rows_text = "\n".join(str(r.data) for r in rows_preview)
-            answer_parts.append(f"Результат ({execute_result.row_count} строк):\n{rows_text}")
-
-    if state.get("error"):
-        answer_parts.append(f"Ошибка: {state['error']}")
-
-    answer = "\n\n".join(answer_parts) if answer_parts else "Не удалось сформировать ответ."
-
+    if schema := state.get("schema_result"):
+        if schema.server:
+            sources.append(SourceReference(
+                server=schema.server, database=schema.database, table=schema.table,
+            ))
+    if sql := state.get("sql_result"):
+        if sql.generated:
+            sql_text = sql.generated.sql
+    if exec_r := state.get("execute_result"):
+        has_data = exec_r.status == ToolStatus.SUCCESS
+ 
     final = AgentResponse(
-        answer=answer,
-        query_type=query_type,
-        sql=sql_text,
+        answer=answer, query_type=query_type, sql=sql_text,
         sources=sources,
         confidence=classification.confidence if classification else 0.0,
         has_data=has_data,
     )
-
-    print(f"[format_response] Готово. Тип: {final.query_type}")
-
-    return {
-        "final_response": final,
-        "steps": _add_step(state, "format_response"),
-    }
-
-
-def unsafe_query_node(state: AgentState) -> dict:
-    """Отвечает пользователю, если запрос содержит запрещенный запрос."""
-    print("\n[handle_unknown] Запрос не классифицирован")
-
-    final = AgentResponse(
-        answer=(
-            "Запрос содержит запрещенные SQL-действия.\n"
-            "Агенту разрешено выполнять запросы только на чтение."
-        ),
-        query_type=QueryType.UNSAFE,
-        confidence=0.0,
-    )
-
-    return {
-        "final_response": final,
-        "steps": _add_step(state, "unsafe_query"),
-    }
+    return {"final_response": final, "steps": _add_step(state, "format_response")}
 
 # ===============================
 # УЗЕЛ-ЗАГЛУШКА: обработка неизвестного запроса
 # ===============================
 
 def handle_unknown_node(state: AgentState) -> dict:
-    """Отвечает пользователю, если запрос не удалось классифицировать."""
-    print("\n[handle_unknown] Запрос не классифицирован")
-
+    """Отвечает если запрос не относится к работе с БД."""
+    logger.info(f"[handle_unknown] '{state.get('user_query')}'")
     final = AgentResponse(
         answer=(
-            "Не смог понять запрос. Попробуй переформулировать.\n"
-            "Примеры: 'Структура таблицы debt', 'Где хранится статус должника?', "
-            "'Скрипт для последней даты платежа'"
+            "Не смог понять запрос. Я помогаю только с вопросами по базам данных.\n\n"
+            "Примеры:\n"
+            "  • «Где хранится статус должника?»\n"
+            "  • «Структура таблицы debt»\n"
+            "  • «Напиши скрипт для последней даты платежа»\n"
+            "  • «Какой статус у должника с id 123?»"
         ),
         query_type=QueryType.UNKNOWN,
         confidence=0.0,
     )
-
-    return {
-        "final_response": final,
-        "steps": _add_step(state, "handle_unknown"),
-    }
+    return {"final_response": final, "steps": _add_step(state, "handle_unknown")}
