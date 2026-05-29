@@ -270,14 +270,15 @@ class SchemaIndexer:
         # Итоговый текст для векторизации.
         # Структура важна: сначала имя и описание (самое значимое),
         # потом перечень колонок.
-        text = f"""Таблица: {table_name}
-База данных: {database}
-Сервер: {server}
-Описание: {table_desc or 'нет описания'}
+        text = f"""
+            Таблица: {table_name}
+            База данных: {database}
+            Сервер: {server}
+            Описание: {table_desc or 'нет описания'}
 
-Колонки:
-{columns_text}
-""".strip()
+            Колонки:
+            {columns_text}
+        """.strip()
 
         return SchemaDocument(
             doc_id      = f"{server}__{database}__{table_name}",

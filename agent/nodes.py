@@ -1,15 +1,5 @@
 """
-Все узлы графа LangGraph.
-
-Сейчас узелы — заглушка: он принимает стейт,
-печатает что делает, и возвращает стейт с тестовыми данными.
-Реальная логика будет реализована далее.
-
-Структура каждого узла:
-    def node_name(state: AgentState) -> dict:
-        ...
-        return {"поле": значение, "steps": [...]}
-        
+Все узлы графа
 """
 
 from __future__ import annotations
@@ -127,7 +117,7 @@ def search_metadata_node(state: AgentState) -> dict:
 # ===============================
 def get_schema_node(state: AgentState) -> dict:
     """
-    Получает структуру таблицы из MS SQL через sys.columns.
+    Получает структуру таблицы из MS SQL.
     
     Таблицу и сервер извлекаем из classification.mentioned_tables.
     Если классификатор не нашёл таблицу — пробуем найти через
@@ -171,8 +161,6 @@ def get_schema_node(state: AgentState) -> dict:
 def generate_sql_node(state: AgentState) -> dict:
     """
     Генерирует SQL-скрипт по запросу пользователя.
-    
-    Позже здесь будет LLM для генерации
     """
     from llm.llm import get_llm
     from llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER, build_schema_context

@@ -1,12 +1,5 @@
 """
-tools/metadata_search.py — поиск таблиц и колонок по запросу.
-
-Интерфейс функции search_metadata() не изменился —
-nodes.py вызывает её так же как раньше.
-
-Что изменилось внутри (Шаг 3):
-  БЫЛО: SQL LIKE по sys.tables/sys.columns
-  СТАЛО: векторный поиск через ChromaDB (rag/retriever.py)
+Поиск таблиц и колонок по запросу.
 
 Fallback: если индекс не построен (retriever не готов) —
   автоматически возвращаемся к SQL LIKE поиску.
@@ -33,7 +26,7 @@ def search_metadata(
     """
     Ищет релевантные таблицы и колонки по запросу пользователя.
 
-    Использует ChromaDB vector search (rag/retriever.py).
+    Использует ChromaDB.
     При недоступном индексе — fallback на SQL LIKE поиск.
 
     Args:
@@ -78,7 +71,7 @@ def _vector_search(
     query: str,
     top_k: int | None,
 ) -> MetadataSearchResult:
-    """Выполняет поиск через ChromaDB retriever."""
+    """Выполняет поиск через ChromaDB."""
     chunks = retriever.search(query, top_k=top_k)
 
     if not chunks:

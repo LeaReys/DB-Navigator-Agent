@@ -2,8 +2,8 @@
 Cборка графа LangGraph.
 
 Два ветвления:
-  1. После classify_intent → 4 ветки по типу запроса
-  2. Внутри DATA-ветки → execute или только вернуть SQL
+  1. После classify_intent → 6 веток по типу запроса
+  2. Внутри DATA-ветки → execute или только вернуть SQL-скрипт
 """
 
 from __future__ import annotations

@@ -43,5 +43,5 @@ class AgentState(TypedDict, total=False):
     final_response:  AgentResponse
 
     # = Служебные поля ====================
-    error: str | None             # текст ошибки, если что-то пошло не так
+    error: str | None                    # текст ошибки, если что-то пошло не так
     steps: Annotated[list[str], add]     # трейс шагов
