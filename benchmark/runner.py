@@ -21,9 +21,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 # ANSI-цвета
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 
 class C:
     RESET  = "\033[0m";  BOLD   = "\033[1m";  DIM    = "\033[2m"
@@ -33,9 +33,9 @@ class C:
 def _c(color, text): return f"{color}{text}{C.RESET}"
 
 
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 # Загрузка кейсов
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 
 CASES_PATH = Path(__file__).parent / "test_cases.json"
 
@@ -54,9 +54,9 @@ def load_cases(
     return cases
 
 
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 # Вывод
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 
 _CATEGORY_COLORS = {
     "navigation": C.CYAN,
@@ -112,25 +112,25 @@ def print_metrics(metrics) -> None:
         return _c(color, f"{v*100:.0f}%")
 
     print(f"\n  {_c(C.BOLD, 'Метрики')}")
-    print(f"  {'─' * 50}")
+    print(f"  {'=' * 50}")
     print(f"  Прошло / Упало / Ошибок : "
           f"{_c(C.GREEN, str(metrics.passed))} / "
           f"{_c(C.RED, str(metrics.failed))} / "
           f"{_c(C.YELLOW, str(metrics.errors))} "
           f"из {metrics.total}")
-    print(f"  {'─' * 50}")
+    print(f"  {'=' * 50}")
     print(f"  Overall pass rate       : {_rate(metrics.overall_pass_rate)}")
     print(f"  Classification accuracy : {_rate(metrics.classification_accuracy)}")
     print(f"  Tool call accuracy      : {_rate(metrics.tool_call_accuracy)}")
     print(f"  SQL safety rate         : {_rate(metrics.sql_safety_rate)}")
-    print(f"  {'─' * 50}")
+    print(f"  {'=' * 50}")
     print(f"  Avg latency             : {_c(C.DIM, f'{metrics.avg_latency_s:.1f}s')}")
     print(f"  P90 latency             : {_c(C.DIM, f'{metrics.p90_latency_s:.1f}s')}")
     print(f"  Total time              : {_c(C.DIM, f'{metrics.total_time_s:.1f}s')}")
 
     if metrics.by_category:
         print(f"\n  {_c(C.BOLD, 'По категориям')}")
-        print(f"  {'─' * 50}")
+        print(f"  {'=' * 50}")
         for cat, stat in sorted(metrics.by_category.items()):
             bar    = "█" * int(stat["pass_rate"] * 10) + "░" * (10 - int(stat["pass_rate"] * 10))
             color  = C.GREEN if stat["pass_rate"] >= 0.8 else C.YELLOW if stat["pass_rate"] >= 0.5 else C.RED
@@ -147,7 +147,7 @@ def print_metrics(metrics) -> None:
 
     if metrics.by_criterion:
         print(f"\n  {_c(C.BOLD, 'По критериям')}")
-        print(f"  {'─' * 50}")
+        print(f"  {'=' * 50}")
         for name, stat in sorted(metrics.by_criterion.items()):
             mark  = _c(C.GREEN, "✓") if stat["pass_rate"] >= 0.8 else _c(C.RED, "✗")
             rate    = _rate(stat["pass_rate"])
@@ -155,9 +155,9 @@ def print_metrics(metrics) -> None:
             print(f"  {mark} {name:<40} {rate}  {_c(C.DIM, counts)}")
 
 
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 # Сохранение результатов
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 
 def save_results(results: list, metrics, run_meta: dict) -> Path:
     results_dir = Path(__file__).parent / "results"
@@ -178,9 +178,9 @@ def save_results(results: list, metrics, run_meta: dict) -> Path:
     return out_path
 
 
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 # Главная функция
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 
 def run_benchmark(
     category:     str | None = None,
@@ -203,9 +203,9 @@ def run_benchmark(
     graph      = build_graph()
     session_id = f"bench_{uuid.uuid4().hex[:8]}"
 
-    # — Шапка ————————————————————————————————————
+    # = Шапка ====================================
     print(_c(C.BOLD, "\n╔══════════════════════════════════════════════════╗"))
-    print(_c(C.BOLD,   "║         DB Navigator — Benchmark Runner          ║"))
+    print(_c(C.BOLD,   "║         DB Navigator = Benchmark Runner          ║"))
     print(_c(C.BOLD,   "╚══════════════════════════════════════════════════╝"))
     print(f"  Провайдер  : {_c(C.GREEN, settings.active_provider)}"
           f"  |  Модели: {_c(C.DIM, settings.model_small)} / {_c(C.DIM, settings.model_large)}")
@@ -216,7 +216,7 @@ def run_benchmark(
     )
     print(f"  LangFuse   : {lf_str}")
     print(f"  Кейсов     : {len(cases)}")
-    print(f"  {'─' * 50}\n")
+    print(f"  {'=' * 50}\n")
 
     results: list[CaseResult] = []
 
@@ -224,7 +224,7 @@ def run_benchmark(
         prefix = f"  {_c(C.DIM, f'[{i:02d}/{len(cases)}]')}"
         print(f"{prefix} {_c(C.DIM, case['description'])}")
 
-        # ── Запускаем агента ──────────────────────────────
+        # == Запускаем агента ==============================
         t0    = time.perf_counter()
         error = None
         state: dict = {}
@@ -239,7 +239,7 @@ def run_benchmark(
 
         elapsed = time.perf_counter() - t0
 
-        # ── Оцениваем результат ───────────────────────────
+        # == Оцениваем результат ===========================
         if error:
             result = CaseResult(
                 case_id    = case["id"],
@@ -256,11 +256,11 @@ def run_benchmark(
         results.append(result)
         print_case_result(result, verbose=verbose)
 
-    # — Метрики ————————————————————————————————————
+    # = Метрики ====================================
     m = metrics_module.compute(results)
     print_metrics(m)
 
-    # — Сохранение ————————————————————————————————
+    # = Сохранение ================================
     from config import settings as cfg
     run_meta = {
         "timestamp":    datetime.now().isoformat(),
@@ -277,9 +277,9 @@ def run_benchmark(
     return results, m
 
 
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 # CLI
-# ─────────────────────────────────────────────────────────────
+# =============================================================
 
 def main() -> None:
     parser = argparse.ArgumentParser(

@@ -2,14 +2,14 @@
 Агрегирует результаты всех кейсов в сводные метрики.
 
 Метрики:
-  - overall_pass_rate       — % кейсов где ВСЕ критерии прошли
-  - classification_accuracy — % правильно классифицированных запросов
-  - tool_call_accuracy      — % правильных вызовов инструментов
-  - sql_safety_rate         — % безопасных SQL (из тех где SQL генерировался)
-  - avg_latency_s           — среднее время ответа
-  - p90_latency_s           — 90-й перцентиль латентности
-  - by_category             — разбивка pass rate по категориям
-  - by_criterion            — pass rate по каждому критерию
+  - overall_pass_rate       = % кейсов где ВСЕ критерии прошли
+  - classification_accuracy = % правильно классифицированных запросов
+  - tool_call_accuracy      = % правильных вызовов инструментов
+  - sql_safety_rate         = % безопасных SQL (из тех где SQL генерировался)
+  - avg_latency_s           = среднее время ответа
+  - p90_latency_s           = 90-й перцентиль латентности
+  - by_category             = разбивка pass rate по категориям
+  - by_criterion            = pass rate по каждому критерию
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ def compute(results: list["CaseResult"]) -> BenchmarkMetrics:
         results: список результатов от evaluator.evaluate()
 
     Returns:
-        BenchmarkMetrics — все метрики для отчёта и JSON
+        BenchmarkMetrics = все метрики для отчёта и JSON
     """
     if not results:
         return BenchmarkMetrics()
@@ -80,7 +80,7 @@ def compute(results: list["CaseResult"]) -> BenchmarkMetrics:
 
     m.overall_pass_rate = m.passed / m.total
 
-    # — Латентность ————————————————————————————————
+    # = Латентность ================================
     latencies = [r.latency_s for r in results if r.latency_s > 0]
     if latencies:
         m.avg_latency_s = mean(latencies)
@@ -90,7 +90,7 @@ def compute(results: list["CaseResult"]) -> BenchmarkMetrics:
         else:
             m.p90_latency_s = max(latencies)
 
-    # — Точность по критериям ——————————————————————
+    # = Точность по критериям ======================
     criterion_stats: dict[str, list[bool]] = {}
     for result in results:
         if result.error:
@@ -115,7 +115,7 @@ def compute(results: list["CaseResult"]) -> BenchmarkMetrics:
     sql_safety = m.by_criterion.get("sql_readonly", {})
     m.sql_safety_rate = sql_safety.get("pass_rate", 1.0) if sql_safety else 1.0
 
-    # — Разбивка по категориям ————————————————————
+    # = Разбивка по категориям ====================
     categories: dict[str, list[CaseResult]] = {}
     for r in results:
         categories.setdefault(r.category, []).append(r)
