@@ -57,7 +57,7 @@ def route_by_query_type(state: AgentState) -> str:
 def route_after_sql_generation(state: AgentState) -> str:
     """
     Роутер 2: после генерации SQL — выполнять или нет?
-    
+
     Выполняем только если:
       - тип запроса DATA (пользователь хочет реальные данные)
       - SQL успешно сгенерирован
@@ -149,11 +149,11 @@ def build_graph() -> StateGraph:
 
 
 # ===============================
-# Точка запуска для ручного теста
+# Запуск без трейсинга (для совместимости)
 # ===============================
 
 def run(user_query: str) -> AgentState:
-    """Запускает граф и возвращает финальный стейт."""
+    """Запускает граф и возвращает финальный стейт (без LangFuse)."""
     app = build_graph()
 
     initial_state: AgentState = {
@@ -162,4 +162,42 @@ def run(user_query: str) -> AgentState:
     }
 
     final_state = app.invoke(initial_state)
+    return final_state
+
+
+# ===============================
+# Запуск с LangFuse трейсингом (основной в production)
+# ===============================
+
+def run_traced(
+    user_query: str,
+    session_id: str,
+    graph=None,
+    tags: list[str] | None = None,
+) -> AgentState:
+    """
+    Запускает граф с LangFuse трейсингом.
+    """
+    from observability.tracer import get_handler, flush
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if graph is None:
+        graph = build_graph()
+
+    initial_state: AgentState = {
+        "user_query": user_query,
+        "steps":      [],
+    }
+
+    handler = get_handler(session_id, user_query, tags=tags)
+
+    if handler:
+        config = {"callbacks": [handler]}
+        final_state = graph.invoke(initial_state, config=config)
+        flush(handler)
+    else:
+        logger.debug("LangFuse недоступен, запуск без трейсинга")
+        final_state = graph.invoke(initial_state)
+
     return final_state
