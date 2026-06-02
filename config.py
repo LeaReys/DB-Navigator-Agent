@@ -5,11 +5,13 @@
 Чувствительные данные (пароли) берём из переменных окружения.
 """
 
-from __future__ import annotations
-
 import os
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+
+# Загружаем .env до ручного чтения DB_SERVER_* через os.getenv()
+load_dotenv(override=False)
 
 
 class DatabaseConfig(BaseModel):
@@ -110,7 +112,11 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chroma_db"   # папка для хранения векторного стора
     rag_top_k:          int = 5               # сколько чанков возвращать при поиске
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # == Унифицированный доступ к именам моделей ===============
     # Используй эти свойства в коде — они сами выбирают нужный провайдер.
