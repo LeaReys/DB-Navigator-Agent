@@ -38,21 +38,10 @@ def get_handler(
     try:
         from langfuse.langchain import CallbackHandler
         from config import settings
+        from langfuse import get_client
 
-        handler = CallbackHandler(
-            public_key  = settings.langfuse_public_key,
-            secret_key  = settings.langfuse_secret_key,
-            host        = settings.langfuse_host,
-            session_id  = session_id,
-            trace_name  = "db-navigator-agent",
-            tags        = tags or [],
-            metadata    = {
-                "query":       user_query,
-                "provider":    settings.active_provider,
-                "model_small": settings.model_small,
-                "model_large": settings.model_large,
-            },
-        )
+        get_client()
+        handler = CallbackHandler()
         logger.info(f"LangFuse handler создан (session={session_id[:8]}...)")
         return handler
 

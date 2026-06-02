@@ -193,7 +193,16 @@ def run_traced(
     handler = get_handler(session_id, user_query, tags=tags)
 
     if handler:
-        config = {"callbacks": [handler]}
+        config = {
+            "callbacks": [handler],
+            "run_name": "db-navigator-agent",
+            "tags": tags or [],
+            "metadata": {
+                "langfuse_session_id": session_id,
+                "query": user_query,
+            },
+        }
+
         final_state = graph.invoke(initial_state, config=config)
         flush(handler)
     else:
