@@ -2,175 +2,252 @@
 
 ## 1. Концепция агента
 
-**DB Navigator Agent** - AI-агент для backend-разработчика, который помогает быстро ориентироваться в MS SQL Server базах данных: находить нужные таблицы и поля, понимать структуру таблиц, генерировать безопасные read-only T-SQL запросы и получать простые ответы из БД.
+**DB Navigator Agent** - AI-агент для backend-разработчика, который помогает быстро ориентироваться в MS SQL Server базах данных: находить нужные таблицы и поля, понимать структуру таблиц, генерировать безопасные read-only T-SQL запросы и получать данные из БД.
 
 
 
 ## 2. Пользователь
 
-Основной пользователь - backend-разработчик, которому часто нужно быстро понять:
-
+Основной пользователь — backend-разработчик, которому часто нужно быстро понять:
+ 
 - где хранится нужная бизнес-информация;
 - какая структура у таблицы;
 - как написать безопасный SELECT-запрос;
 - какой статус или значение находится в БД по конкретному идентификатору.
 
-## 3. Минимальный LangGraph-каркас
+**С какими системами работает агент:**
+- MS SQL Server (через pyodbc, read-only соединение)
+- ChromaDB (локальный векторный стор для RAG)
+- OpenRouter / Ollama (LLM-провайдеры)
+- LangFuse (observability, трейсинг, метрики)
 
-В каркасе реализован стейт, несколько узлов с планируемой логикой, условные переходы и подключенные tools.
-
+---
+ 
+## 3. Архитектура агента
+ 
 ### State
-
-Основные поля состояния:
-
-- `user_query` — исходный вопрос пользователя;
-- `classification` — тип запроса (результат классификации роутера 1);
-- `metadata_result` — найденный контекст по БД (выход RAG-поиска);
-- `schema_result` — выход get_table_schema
-- `sql_result` — сгенерированный SQL (выход generate_sql);
-- `execute_result` — результат выполнения SQL (выход execute_query);
-- `tool_results` — история вызовов tools;
-- `final_response` — итоговый ответ;
-
-- `sql_validation_status` (добавить в дальнейшем) — результат проверки SQL;
-
+ 
+Основные поля состояния (`agent/state.py`):
+ 
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `user_query` | str | Исходный вопрос пользователя |
+| `classification` | ClassificationResult | Тип запроса (выход роутера) |
+| `metadata_result` | MetadataSearchResult | Найденный контекст по БД (RAG) |
+| `schema_result` | TableSchemaResult | Структура конкретной таблицы |
+| `sql_result` | SQLGenerationResult | Сгенерированный SQL |
+| `execute_result` | ExecuteQueryResult | Результат выполнения SELECT |
+| `final_response` | AgentResponse | Итоговый ответ пользователю |
+| `steps` | list[str] | История выполненных шагов (для трейсинга) |
+ 
 ### Узлы графа
-
-- `classify_intent` — определяет тип запроса;
-- `search_metadata_node` — ищет таблицы и поля в БД;
-- `get_schema` — формирует ответ или SQL;
-- `generate_sql` — проверяет, что SQL read-only;
-- `execute_query` — выполняет SELECT;
-- `format_response` — безопасно отказывает в unsafe-запросах;
-- `handle_unknown` — просит уточнение;
-
-
-### Tools (планируется)
-
-- `metadata_search` — RAG-поиск;
-- `schema_tool` — получения структуры таблицы из SQL Server;
-- `sql_tool` — выполнения SQL-запросов;
-
-## 4. Схема графа и описание идеи
-
+ 
+| Узел | Описание |
+|------|----------|
+| `classify_intent` | LLM-классификация типа запроса (малая модель) |
+| `search_metadata` | RAG-поиск релевантных таблиц по запросу |
+| `get_schema` | Получение структуры таблицы из sys.columns |
+| `generate_sql` | Генерация T-SQL через LLM (большая модель) |
+| `execute_query` | Выполнение SELECT через pyodbc (только read-only) |
+| `format_response` | Формирование финального ответа (малая модель) |
+| `handle_unknown` | Ответ при непонятном запросе |
+| `unsafe_query` | Блокировка запросов на изменение данных |
+ 
+### Tools
+ 
+| Tool | Тип | Описание |
+|------|-----|----------|
+| `metadata_search` | RAG + SQL fallback | Семантический поиск таблиц и полей по запросу |
+| `schema_tool` | Внешняя БД | Получение структуры таблицы из системных таблиц MS SQL |
+| `sql_tool` | Внешняя БД | Выполнение SELECT-запросов через pyodbc |
+ 
+---
+ 
+## 4. Схема графа
+ 
 ```mermaid
 flowchart TD
     START([Пользовательский запрос]) --> A[classify_intent<br/>LLM-классификация запроса]
-
+ 
     A -->|navigation<br/>Где хранится поле/сущность?| B[search_metadata<br/>RAG-поиск по метаданным]
     A -->|schema<br/>Структура таблицы| C[get_schema<br/>Получение схемы таблицы]
     A -->|script<br/>Нужно написать SQL| D[generate_sql<br/>Генерация SQL]
     A -->|data<br/>Нужно получить данные| D
-    A -->|unknown<br/>Непонятный запрос| H[handle_unknown<br/>Ответ-заглушка]
+    A -->|unknown<br/>Непонятный запрос| H[handle_unknown<br/>Ответ с примерами]
     A -->|unsafe<br/>INSERT/UPDATE/DELETE/DROP| U[unsafe_query<br/>Блокировка запроса]
-
+ 
     B --> F[format_response<br/>Формирование финального ответа]
     C --> F
-
+ 
     D --> R{DATA-запрос<br/>и SQL безопасный?}
-
+ 
     R -->|Да| E[execute_query<br/>Выполнение SELECT через pyodbc]
     R -->|Нет| F
-
+ 
     E --> F
-
+ 
     F --> END([END])
     H --> END
     U --> END
-
 ```
-Граф агента построен как нелинейный workflow на LangGraph.
+ 
+**Два ветвления:**
+1. **Роутер 1** — после `classify_intent`: 6 веток по типу запроса
+2. **Роутер 2** — после `generate_sql`: выполнять SQL или только вернуть скрипт
+---
 
-**Основная идея:**
-1. Сначала агент классифицирует пользовательский запрос.
-2. Затем выбирает подходящую ветку:
-   - `navigation` → RAG-поиск по метаданным БД;
-   - `schema` → получение структуры таблицы;
-   - `script` → генерация SQL без выполнения;
-   - `data` → генерация SQL и, если запрос безопасен, выполнение SELECT;
-   - `unsafe` → блокировка запроса;
-   - `unknown` → ответ с примерами допустимых запросов.
-
-
-3. Финальный ответ собирается в `format_response`.
-
-Такой граф показывает две важные инженерные идеи:
-- агент принимает решения в зависимости от типа пользовательского запроса;
-- выполнение SQL отделено от генерации SQL и разрешается только для безопасных DATA-запросов.
-
-## 5. Edge cases (Заложить)
-
-Ожидаемые edge cases:
-
-1. Пользователь просит изменить данные: `UPDATE`, `DELETE`, `INSERT`.
-2. Пользователь задает слишком общий вопрос без названия таблицы или бизнес-термина.
-3. Запрошенный бизнес-термин отсутствует в metadata/RAG.
-4. SQL сгенерирован, но не проходит валидацию.
-5. Запрос к БД не возвращает строк.
-6. Есть несколько похожих таблиц-кандидатов, и нужен уточняющий вопрос.
-7. Уточняющий вопрос по серверу или БД.
-
+## 5. Edge cases
+ 
+| # | Сценарий | Обработка |
+|---|----------|-----------|
+| 1 | Пользователь просит UPDATE / DELETE / INSERT | Блокируется классификатором → `unsafe_query` |
+| 2 | SQL содержит мутирующий оператор, но классификатор пропустил | Pydantic-валидатор + проверка в коннекторе (defense in depth) |
+| 3 | Слишком общий вопрос без бизнес-термина | RAG возвращает топ-результаты, агент отвечает что нашёл |
+| 4 | Бизнес-термин отсутствует в RAG-индексе | Fallback на SQL LIKE поиск по sys.tables |
+| 5 | Запрос к БД не возвращает строк | `ToolStatus.EMPTY`, агент сообщает что данных нет |
+| 6 | Запрошенная таблица явно не указана (SCHEMA-запрос) | `get_schema` вызывает `search_metadata` чтобы найти таблицу |
+| 7 | RAG-индекс не построен при первом запуске | Автоматический fallback на SQL LIKE, агент не падает |
+| 8 | LLM-провайдер недоступен | `try/except` в каждом узле, возврат `QueryType.UNKNOWN` |
+ 
+---
+ 
 ## 6. Критерии качества
-
-Будем считать, что агент работает хорошо, если:
-
+ 
+Агент работает хорошо, если:
+ 
 - правильно классифицирует тип запроса;
-- находит релевантные таблицы и колонки по бизнес-вопросу;
-- не выполняет unsafe SQL;
+- не выполняет unsafe SQL — никогда;
+- находит релевантные таблицы по бизнес-вопросу;
 - генерирует только read-only SQL;
-- объясняет, из каких таблиц и полей взят ответ;
-- проходит benchmark минимум из 10 тестовых вопросов;
-- имеет понятные LangFuse traces и tool-call историю.
+- объясняет ответ на русском языке;
+- проходит benchmark из тестовых кейсов с success rate ≥ 80%.
 
-## 7. Как запустить demo
-
+---
+ 
+## 7. Быстрый старт
+ 
+### Предварительные условия
+ 
+- Python 3.11+
+- Docker (для demo-БД)
+- ODBC Driver 17 for SQL Server
+### 1. Установить зависимости
+ 
 ```bash
-python app.py               — интерактивный режим (REPL)
-python app.py "вопрос"      — одиночный запрос
-python app.py --test        — прогон тестовых запросов
-python app.py --check       — проверка подключений
-python app.py --help        — эта справка
+pip install -r requirements.txt
 ```
-
+ 
+### 2. Настроить окружение
+ 
+```bash
+cp .env.example .env
+# Заполните .env своими значениями:
+# - OPENROUTER_API_KEY или OLLAMA_HOST
+# - LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY (cloud.langfuse.com)
+# - DB_SERVER_1_* (параметры БД)
+```
+ 
+### 3. Поднять demo-БД
+ 
+```bash
+cd demo
+docker-compose up -d
+# Подождать ~30 сек пока MS SQL поднимется и init.sql применится
+```
+ 
+### 4. Построить RAG-индекс
+ 
+```bash
+python -m rag.indexer
+```
+ 
+### 5. Проверить что всё работает
+ 
+```bash
+python app.py --check
+# Должно показать ✓ OK для LLM, БД, RAG и LangFuse
+```
+ 
+### 6. Запустить агента
+ 
+```bash
+# Интерактивный режим (REPL)
+python app.py
+ 
+# Одиночный запрос
+python app.py "Какая структура у таблицы debt?"
+ 
+# Прогон benchmark (все 12 кейсов)
+python app.py --bench
+ 
+# Только одна категория
+python app.py --bench navigation
+ 
+# Справка
+python app.py --help
+```
+ 
+---
+ 
 ## 8. Структура проекта
-
-```text
+ 
+```
 db_navigator/
 ├── agent/
-│   ├── graph.py            # LangGraph граф
-│   ├── nodes.py            # логика каждого узла
-│   └── state.py            # AgentState (TypedDict)
-├── schemes/
-│   └── models.py           # pydentic
+│   ├── graph.py            # LangGraph граф (build_graph, run_traced)
+│   ├── nodes.py            # Логика каждого узла
+│   └── state.py            # AgentState (TypedDict + Pydantic-модели)
+├── observability/
+│   ├── __init__.py
+│   └── tracer.py           # LangFuse интеграция (трейсинг, метрики)
 ├── tools/
-│   ├── metadata_search.py  # RAG tool
-│   ├── schema_tool.py      # get_table_schema
-│   └── sql_tool.py         # execute_query
+│   ├── metadata_search.py  # RAG + SQL fallback
+│   ├── schema_tool.py      # get_table_schema из sys.columns
+│   └── sql_tool.py         # execute_query через pyodbc
 ├── rag/
-│   ├── indexer.py          # индексация схемы в ChromaDB
-│   └── retriever.py        # поиск по вектору
+│   ├── indexer.py          # Индексация схемы БД в ChromaDB
+│   └── retriever.py        # Семантический поиск по индексу
 ├── llm/
-│   ├── llm.py              # обёртка над LLM провайдерами
-│   └── prompts.py          # шаблоны промптов для всех LLM-узлов
+│   ├── llm.py              # Обёртка над OpenRouter / Ollama
+│   └── prompts.py          # Шаблоны промптов для всех LLM-узлов
 ├── db/
-│   └── connector.py        # pyodbc соединения (multi-server)
-├── config.py               # серверы, БД, параметры
-├── app.py                  # Streamlit UI
+│   └── connector.py        # pyodbc-менеджер (пул соединений, read-only guard)
+├── schemes/
+│   └── models.py           # Pydantic-модели для всех выходов агента
 ├── benchmark/
-│   └── test_cases.json     # 10+ тестовых запросов
-└── README.md
+│   ├── evaluator.py        # Критерии оценки каждого кейса
+│   ├── metrics.py          # Агрегация: pass rate, latency, by_category
+│   ├── runner.py           # CLI для запуска benchmark
+│   └── test_cases.json     # 12 тестовых запросов с критериями
+├── demo/
+│   ├── docker-compose.yml  # MS SQL 2022 + автоматическая заливка init.sql
+│   └── init.sql            # Синтетическая demo-БД (9 таблиц, домен взыскания)
+├── config.py               # Все настройки через pydantic-settings + .env
+├── app.py                  # Точка входа: REPL / одиночный запрос / benchmark / check
+├── requirements.txt        # Зависимости
+└── .env.example            # Шаблон переменных окружения
 ```
 
-## 9. Что будет расширено дальше
+---
+
+## 9. Безопасность (в дальнейшем)
+ 
+
+----
+
+## 10. Возможные расширения проекта 
 
 - [x] подключение OpenRouter/Ollama;
 - [x] RAG по схеме БД (по sys-таблицам из MS Server);
-- [ ] (?) дополнение RAG по документам описания БД;
+- [ ] (?) дополнение RAG по документам описания БД (а не только по sys-таблицам);
 - [x] реальный `pyodbc` metadata tool;
 - [x] read-only SQL  через SQL Server с ограниченными правами;
 - [ ] (?) HITL - уточняющие вопросы у пользователя;
 - [ ] Retry;
-- [ ] LangFuse;
-- [ ] benchmark и evals;
+- [x] LangFuse;
+- [x] benchmark и evals;
 - [ ] security-checklist;
-- [ ] README.
+- [ ] улучшенная проверка SQL-запроса;
+- [ ] Allowlist таблиц;
+- [ ] доработка
+- [ ] LLM-as-judge 
