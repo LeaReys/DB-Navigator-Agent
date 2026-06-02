@@ -1,0 +1,23 @@
+# DB Navigator Agent — зависимости
+# Установка: pip install -r requirements.txt
+
+# === LangGraph / LangChain ===
+langgraph>=0.2.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0       # для OpenRouter (ChatOpenAI с кастомным base_url)
+langchain-ollama>=0.2.0       # для локального Ollama (опционально)
+
+# === LangFuse — observability ===
+langfuse>=2.0.0               # трейсинг, токены, cost per run
+
+# === RAG / векторный поиск ===
+chromadb>=0.5.0               # локальный векторный стор
+sentence-transformers>=3.0.0  # модель эмбеддингов multilingual-e5-small
+
+# === База данных ===
+pyodbc>=5.0.0                 # подключение к MS SQL Server
+
+# === Конфигурация ===
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
