@@ -4,9 +4,18 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any
 from pydantic import BaseModel, Field, field_validator
+
+
+# Паттерн для проверки SQL на мутирующие операторы.
+_MUTATION_PATTERN = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE"
+    r"|EXEC|EXECUTE|GRANT|REVOKE|MERGE)\b",
+    re.IGNORECASE,
+)
 
 
 # =============================================
@@ -109,12 +118,15 @@ class GeneratedSQL(BaseModel):
     @field_validator("sql")
     @classmethod
     def no_mutations(cls, v: str) -> str:
-        """Жёсткая проверка: мутирующие операторы запрещены."""
-        forbidden = {"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER", "CREATE"}
-        upper = v.upper()
-        found = [kw for kw in forbidden if kw in upper]
+        """
+        Проверка: мутирующие операторы запрещены.
+            проверяем через \b...\b — граница слова.
+        """
+        found = _MUTATION_PATTERN.findall(v)
         if found:
-            raise ValueError(f"SQL содержит запрещённые операторы: {found}")
+            raise ValueError(
+                f"SQL содержит запрещённые операторы: {sorted(set(f.upper() for f in found))}"
+            )
         return v
 
 

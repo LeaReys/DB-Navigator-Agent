@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import contextmanager
 from typing import Any, Generator
 
@@ -24,6 +25,13 @@ import pyodbc
 from config import settings, ServerConfig
 
 logger = logging.getLogger(__name__)
+
+# Тот же паттерн проверки SQL что в models.py — второй независимый рубеж защиты.
+_MUTATION_PATTERN = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE"
+    r"|EXEC|EXECUTE|GRANT|REVOKE|MERGE)\b",
+    re.IGNORECASE,
+)
 
 
 # =============================================================
@@ -148,11 +156,11 @@ class DBConnector:
         Второй рубеж защиты от мутирующих запросов.
         Первый — Pydantic-валидатор в GeneratedSQL.
         """
-        sql_upper = sql.upper()
-        found = [kw for kw in self.FORBIDDEN_KEYWORDS if kw in sql_upper]
+        found = _MUTATION_PATTERN.findall(sql)
         if found:
             raise UnsafeQueryError(
-                f"Запрос содержит запрещённые операторы: {found}"
+                f"Запрос содержит запрещённые операторы: "
+                f"{sorted(set(f.upper() for f in found))}"
             )
 
     def execute(
