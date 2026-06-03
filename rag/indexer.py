@@ -325,6 +325,10 @@ class SchemaIndexer:
 
 if __name__ == "__main__":
     import json
+
+    from dotenv import load_dotenv
+    load_dotenv() 
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     print("=== DB Navigator — индексация схемы БД ===\n")
