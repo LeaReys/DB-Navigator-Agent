@@ -21,12 +21,7 @@ logger = logging.getLogger(__name__)
 
 COLLECTION_NAME  = "db_schema"
 EMBEDDING_MODEL  = "intfloat/multilingual-e5-small"
-
-# Минимальный score для включения результата в ответ.
-# ChromaDB с cosine-расстоянием возвращает distance (0=идентично, 2=противоположно).
-# Переводим в similarity: similarity = 1 - distance/2
-# Порог 0.3 отсекает совсем нерелевантные результаты.
-MIN_SIMILARITY = 0.3
+MIN_SIMILARITY = 0.3        # Минимальный score для включения результата в ответ.
 
 
 class SchemaRetriever:
@@ -57,7 +52,7 @@ class SchemaRetriever:
             raise RuntimeError(
                 f"Индекс не найден в '{settings.chroma_persist_dir}'. "
                 f"Необходимо запустить сначала: python -m rag.indexer\n"
-                f"Тескт ошибки: {e}"
+                f"Текст ошибки: {e}"
             ) from e
 
     def search(
@@ -84,8 +79,11 @@ class SchemaRetriever:
 
         logger.debug(f"Поиск: '{query}', top_k={limit}")
 
+        # добавляем префикс "query: " перед запросом.
+        # Без префикса запрос эмбеддится в другом «пространстве» чем документы,
+        # и косинусное сходство между ними ниже, чем должно быть.
         results = self._collection.query(
-            query_texts = [query],
+            query_texts = [f"query: {query}"],          # ← префикс e5
             n_results   = min(limit, self._collection.count()),
             include     = ["documents", "metadatas", "distances"],
         )
