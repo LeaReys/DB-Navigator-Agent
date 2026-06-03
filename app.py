@@ -18,6 +18,9 @@ import uuid
 import logging
 import textwrap
 
+from dotenv import load_dotenv
+load_dotenv() 
+
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 logging.getLogger("agent").setLevel(logging.INFO)
 logging.getLogger("llm").setLevel(logging.INFO)
