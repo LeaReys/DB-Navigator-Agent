@@ -61,12 +61,11 @@ def flush(handler: object | None) -> None:
     Если не вызвать flush(), последние события могут не успеть 
     отправиться до завершения процесса и трейс окажется неполным.
     """
-    if handler is None:
-        return
-    try:
-        handler.flush()
-    except Exception as e:
-        logger.warning(f"flush error: {e}")
+    if hasattr(handler, 'flush'):
+        try:
+            handler.flush()
+        except Exception as e:
+            logger.debug(f"flush() не доступен: {e}")
 
 
 # =============================================================
