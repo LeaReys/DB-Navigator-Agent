@@ -269,19 +269,20 @@ def format_response_node(state: AgentState) -> dict:
     Fallback — собирает ответ из контекста без LLM.
     """
     from llm.llm import get_llm
-    from llm.prompts import FORMAT_SYSTEM, FORMAT_USER, build_results_context
- 
+    from llm.prompts import get_format_system, FORMAT_USER, build_results_context
+
     query          = state.get("user_query", "")
     classification = state.get("classification")
     query_type     = classification.query_type if classification else QueryType.UNKNOWN
- 
+
     logger.info(f"[format_response] тип={query_type}")
- 
+
     try:
         response = get_llm("small").invoke([
-            SystemMessage(content=FORMAT_SYSTEM),
+            SystemMessage(content=get_format_system(query_type)),   # ← тип-специфичный промпт
             HumanMessage(content=FORMAT_USER.format(
                 query=query,
+                query_type=str(query_type),                          # ← передаём тип в контекст
                 results_context=build_results_context(state),
             )),
         ])
