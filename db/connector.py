@@ -57,12 +57,6 @@ class DBConnector:
     Управляет подключениями к нескольким MS SQL серверам.
     """
 
-    # Запрещённые SQL-операторы — никогда не выполняем их через агента
-    FORBIDDEN_KEYWORDS = frozenset({
-        "INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE",
-        "ALTER", "CREATE", "EXEC", "EXECUTE", "GRANT", "REVOKE",
-    })
-
     def __init__(self) -> None:
         # Кеш открытых подключений: ключ = (server_alias, database_name)
         self._pool: dict[tuple[str, str], pyodbc.Connection] = {}

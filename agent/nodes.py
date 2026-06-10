@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 # Вспомогательные функции
 # ===============================
 
-def _add_step(state: AgentState, step: str) -> list[str]:
-    """Возвращает список с одним шагом"""
+def _add_step(step: str) -> list[str]:
+    """Возвращает список с одним шагом для Annotated[list, add] в стейте."""
     return [step]
 
 
@@ -88,7 +88,7 @@ def classify_intent(state: AgentState) -> dict:
  
     return {
         "classification": result,
-        "steps": _add_step(state, f"classify_intent:{result.query_type}"),
+        "steps": _add_step(f"classify_intent:{result.query_type}"),
     }
  
 
@@ -108,7 +108,7 @@ def search_metadata_node(state: AgentState) -> dict:
     logger.info(f"[search_metadata] статус={result.status}, чанков={len(result.chunks)}")
     return {
         "metadata_result": result,
-        "steps": _add_step(state, "search_metadata"),
+        "steps": _add_step("search_metadata"),
     }
 
 
@@ -181,13 +181,13 @@ def get_schema_node(state: AgentState) -> dict:
                 server    = "", database = "", table = "",
                 error_msg = "Не удалось определить таблицу из запроса",
             )
-            return {"schema_result": result, "steps": _add_step(state, "get_schema:not_found")}
+            return {"schema_result": result, "steps": _add_step("get_schema:not_found")}
 
     logger.info(
         f"[get_schema] {result.table}: "
         f"{len(result.columns)} колонок, статус={result.status}"
     )
-    return {"schema_result": result, "steps": _add_step(state, "get_schema")}
+    return {"schema_result": result, "steps": _add_step("get_schema")}
 
 
 # ===============================
@@ -243,7 +243,7 @@ def generate_sql_node(state: AgentState) -> dict:
     return {
         "sql_result":      result,
         "metadata_result": current_state.get("metadata_result"),
-        "steps":           _add_step(state, f"generate_sql:{result.status}"),
+        "steps":           _add_step(f"generate_sql:{result.status}"),
     }
 
 
@@ -262,7 +262,7 @@ def execute_query_node(state: AgentState) -> dict:
                 status=ToolStatus.ERROR, tool_name="execute_query",
                 sql="", error_msg="SQL не был сгенерирован",
             ),
-            "steps": _add_step(state, "execute_query:no_sql"),
+            "steps": _add_step("execute_query:no_sql"),
         }
  
     sql              = sql_result.generated.sql
@@ -274,7 +274,7 @@ def execute_query_node(state: AgentState) -> dict:
  
     return {
         "execute_result": result,
-        "steps": _add_step(state, f"execute_query:{result.status}"),
+        "steps": _add_step(f"execute_query:{result.status}"),
     }
 
 
@@ -347,7 +347,7 @@ def fix_sql_node(state: AgentState) -> dict:
     return {
         "sql_result":      result,
         "sql_retry_count": retry_count + 1,   # роутер проверит на следующем шаге
-        "steps":           _add_step(state, f"fix_sql:attempt_{retry_count + 1}"),
+        "steps":           _add_step(f"fix_sql:attempt_{retry_count + 1}"),
     }
 
 
@@ -366,7 +366,7 @@ def unsafe_query_node(state: AgentState) -> dict:
         query_type=QueryType.UNSAFE,
         confidence=1.0,
     )
-    return {"final_response": final, "steps": _add_step(state, "unsafe_query:blocked")}
+    return {"final_response": final, "steps": _add_step("unsafe_query:blocked")}
 
 
 # ===============================
@@ -427,7 +427,7 @@ def format_response_node(state: AgentState) -> dict:
         confidence=classification.confidence if classification else 0.0,
         has_data=has_data,
     )
-    return {"final_response": final, "steps": _add_step(state, "format_response")}
+    return {"final_response": final, "steps": _add_step("format_response")}
 
 # ===============================
 # УЗЕЛ-ЗАГЛУШКА: обработка неизвестного запроса
@@ -448,4 +448,4 @@ def handle_unknown_node(state: AgentState) -> dict:
         query_type=QueryType.UNKNOWN,
         confidence=0.0,
     )
-    return {"final_response": final, "steps": _add_step(state, "handle_unknown")}
+    return {"final_response": final, "steps": _add_step("handle_unknown")}
