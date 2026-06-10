@@ -118,40 +118,75 @@ def search_metadata_node(state: AgentState) -> dict:
 def get_schema_node(state: AgentState) -> dict:
     """
     Получает структуру таблицы из MS SQL.
-    
-    Таблицу и сервер извлекаем из classification.mentioned_tables.
-    Если классификатор не нашёл таблицу — пробуем найти через
-    search_metadata и берём первый результат.
+
+    Логика разрешения имени таблицы — два уровня:
+
+    1. Классификатор → mentioned_tables[0].
+       Работает когда пользователь называет таблицу точно: "структура debt".
+       Но классификатор может вернуть бизнес-термин ("долг", "должник"),
+       которого нет в БД — тогда get_table_schema вернёт EMPTY.
+
+    2. RAG-fallback → search_metadata(query).
+       Срабатывает в двух случаях:
+         а) mentioned_tables пустой (пользователь не назвал таблицу явно);
+         б) прямой поиск по mentioned_tables[0] не нашёл таблицу —
+            значит, классификатор отдал бизнес-термин, RAG его разрешает.
     """
     from schemes.models import TableSchemaResult
- 
+
     query          = state["user_query"]
     classification = state.get("classification")
     logger.info(f"[get_schema] '{query}'")
- 
+
     mentioned = classification.mentioned_tables if classification else []
- 
+
+    def _resolve_via_rag() -> tuple[str, str, str] | None:
+        """Ищет таблицу через RAG. Возвращает (table, server, database) или None."""
+        meta = search_metadata(query, top_k=1)
+        if meta.chunks:
+            top = meta.chunks[0]
+            return top.table_name, top.server, top.database
+        return None
+
     if mentioned:
+        # Сначала пробуем имя напрямую из классификатора
         table    = mentioned[0]
         server   = settings.servers[0].alias
         database = settings.servers[0].databases[0].name
+
+        result = get_table_schema(server, database, table)
+
+        # Если таблица не найдена — классификатор мог вернуть бизнес-термин
+        # ("долг" вместо "debt"). Пробуем разрешить через RAG.
+        if result.status in (ToolStatus.EMPTY, ToolStatus.ERROR):
+            logger.info(
+                f"[get_schema] '{table}' не найдена напрямую "
+                f"(статус={result.status}), пробуем RAG"
+            )
+            resolved = _resolve_via_rag()
+            if resolved:
+                table, server, database = resolved
+                logger.info(f"[get_schema] RAG разрешил: '{table}'")
+                result = get_table_schema(server, database, table)
     else:
-        meta = search_metadata(query, top_k=1)
-        if meta.chunks:
-            top      = meta.chunks[0]
-            table    = top.table_name
-            server   = top.server
-            database = top.database
+        # Таблица не названа явно — сразу идём в RAG
+        resolved = _resolve_via_rag()
+        if resolved:
+            table, server, database = resolved
+            result = get_table_schema(server, database, table)
         else:
             result = TableSchemaResult(
-                status=ToolStatus.EMPTY, tool_name="get_table_schema",
-                server="", database="", table="",
-                error_msg="Не удалось определить таблицу из запроса",
+                status    = ToolStatus.EMPTY,
+                tool_name = "get_table_schema",
+                server    = "", database = "", table = "",
+                error_msg = "Не удалось определить таблицу из запроса",
             )
             return {"schema_result": result, "steps": _add_step(state, "get_schema:not_found")}
- 
-    result = get_table_schema(server, database, table)
-    logger.info(f"[get_schema] {result.table}: {len(result.columns)} колонок, статус={result.status}")
+
+    logger.info(
+        f"[get_schema] {result.table}: "
+        f"{len(result.columns)} колонок, статус={result.status}"
+    )
     return {"schema_result": result, "steps": _add_step(state, "get_schema")}
 
 
