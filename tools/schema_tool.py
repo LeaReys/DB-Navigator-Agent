@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 
 from db.connector import connector, ConnectorError
-from schemes.models import (
+from schemas.models import (
     ColumnInfo,
     TableSchemaResult,
     ToolStatus,

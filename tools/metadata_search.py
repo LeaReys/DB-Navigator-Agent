@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from schemes.models import (
+from schemas.models import (
     MetadataChunk,
     MetadataSearchResult,
     ToolStatus,

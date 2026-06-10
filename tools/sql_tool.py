@@ -15,7 +15,7 @@ import re
 
 from db.connector import connector, ConnectorError, UnsafeQueryError
 from config import settings
-from schemes.models import (
+from schemas.models import (
     ExecuteQueryResult,
     QueryRow,
     ToolStatus,

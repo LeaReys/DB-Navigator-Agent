@@ -9,7 +9,7 @@ import logging
 from langchain_core.messages import HumanMessage, SystemMessage
  
 from agent.state import AgentState
-from schemes.models import (
+from schemas.models import (
     QueryType,
     ClassificationResult,
     ToolStatus,

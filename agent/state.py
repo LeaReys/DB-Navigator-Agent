@@ -11,8 +11,8 @@ LangGraph передаёт этот объект от узла к узлу.
 
 from __future__ import annotations
 from operator import add
-from typing import Annotated, Any, Literal, TypedDict
-from schemes.models import (
+from typing import Annotated, TypedDict
+from schemas.models import (
     ClassificationResult,
     MetadataSearchResult,
     TableSchemaResult,

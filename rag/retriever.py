@@ -15,7 +15,7 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 from config import settings
-from schemes.models import MetadataChunk
+from schemas.models import MetadataChunk
 
 logger = logging.getLogger(__name__)
 
