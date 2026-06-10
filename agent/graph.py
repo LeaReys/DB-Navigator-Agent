@@ -10,9 +10,6 @@ from __future__ import annotations
 
 from langgraph.graph import StateGraph, END
 
-import sys
-from pathlib import Path
-
 from agent.state import AgentState
 from schemes.models import QueryType, ToolStatus
 from agent.nodes import (
@@ -21,6 +18,7 @@ from agent.nodes import (
     get_schema_node,
     generate_sql_node,
     execute_query_node,
+    fix_sql_node,
     format_response_node,
     handle_unknown_node,
     unsafe_query_node,
@@ -30,6 +28,12 @@ from agent.nodes import (
 # ===============================
 # Функции-роутеры (определяют, какое ребро выбрать)
 # ===============================
+
+# Максимальное число попыток исправить SQL после ошибки выполнения.
+# Итого запросов к БД не более MAX_SQL_RETRIES + 1:
+# 1 исходный + до 2 исправленных = 3 попытки.
+MAX_SQL_RETRIES = 2
+
 
 def route_by_query_type(state: AgentState) -> str:
     """
@@ -85,6 +89,31 @@ def route_after_sql_generation(state: AgentState) -> str:
         return "format_response"
 
 
+def route_after_execute(state: AgentState) -> str:
+    """
+    Роутер 3: после выполнения SQL — исправить или форматировать ответ?
+
+    Retry запускается только при ERROR (синтаксическая/runtime-ошибка сервера).
+    EMPTY (запрос выполнился, но данных нет) — не ошибка, идём к форматированию.
+    """
+    execute_result = state.get("execute_result")
+    retry_count    = state.get("sql_retry_count", 0)
+
+    if (
+        execute_result is not None
+        and execute_result.status == ToolStatus.ERROR
+        and retry_count < MAX_SQL_RETRIES
+    ):
+        print(
+            f"[router-3] SQL ошибка, попытка исправления "
+            f"{retry_count + 1}/{MAX_SQL_RETRIES} → fix_sql"
+        )
+        return "fix_sql"
+
+    print(f"[router-3] → format_response (retry_count={retry_count})")
+    return "format_response"
+
+
 # ===============================
 # Сборка графа
 # ===============================
@@ -102,6 +131,7 @@ def build_graph() -> StateGraph:
     graph.add_node("get_schema",         get_schema_node)
     graph.add_node("generate_sql",       generate_sql_node)
     graph.add_node("execute_query",      execute_query_node)
+    graph.add_node("fix_sql",            fix_sql_node)        # новый узел
     graph.add_node("format_response",    format_response_node)
     graph.add_node("handle_unknown",     handle_unknown_node)
     graph.add_node("unsafe_query",       unsafe_query_node)
@@ -138,8 +168,20 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # = После выполнения SQL → форматируем ответ =======
-    graph.add_edge("execute_query", "format_response")
+    # = После выполнения SQL → исправить или форматировать (роутер 3) ===
+    graph.add_conditional_edges(
+        source="execute_query",
+        path=route_after_execute,
+        path_map={
+            "fix_sql":        "fix_sql",
+            "format_response": "format_response",
+        },
+    )
+
+    # = После исправления SQL → повторить выполнение ==========
+    # Петля: fix_sql всегда возвращается к execute_query.
+    # Остановка гарантируется счётчиком sql_retry_count в route_after_execute.
+    graph.add_edge("fix_sql", "execute_query")
 
     # = Финальные узлы → END =================
     graph.add_edge("format_response", END)

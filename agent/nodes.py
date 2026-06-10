@@ -277,6 +277,80 @@ def execute_query_node(state: AgentState) -> dict:
         "steps": _add_step(state, f"execute_query:{result.status}"),
     }
 
+
+# ===============================
+# УЗЕЛ 5.5: Самоисправление SQL (SQL self-correction loop)
+# ===============================
+def fix_sql_node(state: AgentState) -> dict:
+    """
+    Исправляет SQL-запрос после ошибки выполнения.
+
+    Запускается только когда execute_query_node вернул статус ERROR
+    и лимит попыток не исчерпан.
+    """
+    from llm.llm import get_llm
+    from llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER, build_schema_context
+
+    query          = state["user_query"]
+    sql_result     = state.get("sql_result")
+    execute_result = state.get("execute_result")
+    retry_count    = state.get("sql_retry_count", 0)
+
+    failed_sql = (
+        sql_result.generated.sql
+        if sql_result and sql_result.generated
+        else "— SQL отсутствует —"
+    )
+    error_msg = (
+        execute_result.error_msg
+        if execute_result and execute_result.error_msg
+        else "неизвестная ошибка"
+    )
+
+    logger.info(
+        f"[fix_sql] попытка {retry_count + 1}, "
+        f"ошибка: {error_msg!r}"
+    )
+
+    schema_context = build_schema_context(state)
+
+    try:
+        chain = get_llm("large").with_structured_output(GeneratedSQL)
+        fixed: GeneratedSQL = chain.invoke([
+            SystemMessage(content=FIX_SQL_SYSTEM),
+            HumanMessage(content=FIX_SQL_USER.format(
+                query=query,
+                schema_context=schema_context,
+                failed_sql=failed_sql,
+                error_msg=error_msg,
+            )),
+        ])
+        result = SQLGenerationResult(
+            status=ToolStatus.SUCCESS, tool_name="fix_sql", generated=fixed,
+        )
+        logger.info(f"[fix_sql] исправлен: {fixed.sql[:100].strip()}...")
+
+    except ValueError as e:
+        # Pydantic-валидатор поймал мутирующий оператор в «исправленном» SQL
+        logger.warning(f"[fix_sql] unsafe SQL rejected: {e}")
+        result = SQLGenerationResult(
+            status=ToolStatus.ERROR, tool_name="fix_sql",
+            error_msg=f"Исправленный SQL содержит запрещённые операторы: {e}",
+        )
+    except Exception as e:
+        logger.error(f"[fix_sql] LLM error: {e}")
+        result = SQLGenerationResult(
+            status=ToolStatus.ERROR, tool_name="fix_sql",
+            error_msg=f"Ошибка при исправлении SQL: {e}",
+        )
+
+    return {
+        "sql_result":      result,
+        "sql_retry_count": retry_count + 1,   # роутер проверит на следующем шаге
+        "steps":           _add_step(state, f"fix_sql:attempt_{retry_count + 1}"),
+    }
+
+
 # ===============================
 # УЗЕЛ 6: Обработка небезопасного запроса
 # ===============================

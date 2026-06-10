@@ -99,8 +99,34 @@ GENERATE_SQL_USER = """Запрос пользователя:
 
 
 # =============================================================
-# УЗЕЛ 6: Форматирование финального ответа
+# УЗЕЛ fix_sql: Самоисправление SQL после ошибки выполнения
 # =============================================================
+
+FIX_SQL_SYSTEM = """Ты эксперт по T-SQL (Microsoft SQL Server).
+SQL-запрос был выполнен, но вернул ошибку от сервера.
+Твоя задача — исправить запрос: устранить причину ошибки, сохранив исходный смысл.
+
+ПРАВИЛА (те же, что при генерации):
+1. Только SELECT. Никаких INSERT, UPDATE, DELETE, DROP и других мутирующих операторов.
+2. Используй только таблицы и колонки, которые есть в контексте схемы.
+3. Если ошибка "Invalid column name" — проверь точное написание по схеме.
+4. Если ошибка "Invalid object name" — таблица может называться иначе, проверь схему.
+5. Если ошибка в JOIN — проверь условие связи по правилам этой БД (нет FK, связи через parent_id/bank_id).
+
+В поле explanation объясни по-русски: что именно было исправлено и почему."""
+
+FIX_SQL_USER = """Запрос пользователя: {query}
+
+Контекст схемы БД:
+{schema_context}
+
+SQL-запрос, который вернул ошибку:
+{failed_sql}
+
+Ошибка от MS SQL Server:
+{error_msg}
+
+Исправь запрос."""
 
 # Базовая часть — общая для всех типов запросов
 _FORMAT_BASE = """\
@@ -150,7 +176,8 @@ def get_format_system(query_type) -> str:
     Возвращает системный промпт для форматирования ответа.
 
     Состоит из общей базы и короткого блока правил,
-    специфичных для типа запроса.
+    специфичных для типа запроса. Меньше инструкций «обо всём» —
+    точнее следует малая модель.
 
     Args:
         query_type: QueryType enum или строка ("navigation", "schema", …)
@@ -238,12 +265,11 @@ def build_results_context(state: dict) -> str:
     if execute_result := state.get("execute_result"):
         from schemes.models import ToolStatus
         if execute_result.status == ToolStatus.SUCCESS:
-            # форматируем как "- ключ: значение" — понятно и модели, и человеку.
             rows = execute_result.rows[:5]
             rows_lines: list[str] = []
             for r in rows:
                 pairs = ", ".join(f"{k}: {v}" for k, v in r.data.items())
-                rows_lines.append(f"  - {pairs}")
+                rows_lines.append(f"  • {pairs}")
             truncated = ", обрезано до 5" if execute_result.truncated else ""
             parts.append(
                 f"Данные из БД ({execute_result.row_count} строк{truncated}):\n"

@@ -45,3 +45,6 @@ class AgentState(TypedDict, total=False):
     # = Служебные поля ====================
     error: str | None                    # текст ошибки, если что-то пошло не так
     steps: Annotated[list[str], add]     # трейс шагов
+
+    # = SQL self-correction loop ==========
+    sql_retry_count: int                # сколько раз мы уже пытались исправить SQL
