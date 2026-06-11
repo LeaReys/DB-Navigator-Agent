@@ -11,8 +11,8 @@ LangGraph передаёт этот объект от узла к узлу.
 
 from __future__ import annotations
 from operator import add
-from typing import Annotated, Any, Literal, TypedDict
-from schemes.models import (
+from typing import Annotated, TypedDict
+from schemas.models import (
     ClassificationResult,
     MetadataSearchResult,
     TableSchemaResult,
@@ -45,3 +45,6 @@ class AgentState(TypedDict, total=False):
     # = Служебные поля ====================
     error: str | None                    # текст ошибки, если что-то пошло не так
     steps: Annotated[list[str], add]     # трейс шагов
+
+    # = SQL self-correction loop ==========
+    sql_retry_count: int                # сколько раз мы уже пытались исправить SQL

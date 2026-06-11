@@ -22,6 +22,7 @@ from typing import Any, Generator
 import pyodbc
 
 from config import settings, ServerConfig
+from schemas.sql_safety import find_mutations
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,6 @@ class DBConnector:
     """
     Управляет подключениями к нескольким MS SQL серверам.
     """
-
-    # Запрещённые SQL-операторы — никогда не выполняем их через агента
-    FORBIDDEN_KEYWORDS = frozenset({
-        "INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE",
-        "ALTER", "CREATE", "EXEC", "EXECUTE", "GRANT", "REVOKE",
-    })
 
     def __init__(self) -> None:
         # Кеш открытых подключений: ключ = (server_alias, database_name)
@@ -148,8 +143,7 @@ class DBConnector:
         Второй рубеж защиты от мутирующих запросов.
         Первый — Pydantic-валидатор в GeneratedSQL.
         """
-        sql_upper = sql.upper()
-        found = [kw for kw in self.FORBIDDEN_KEYWORDS if kw in sql_upper]
+        found = find_mutations(sql)
         if found:
             raise UnsafeQueryError(
                 f"Запрос содержит запрещённые операторы: {found}"

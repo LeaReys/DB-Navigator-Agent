@@ -1,35 +1,44 @@
 """
-Cборка графа LangGraph.
+Сборка графа LangGraph.
 
 Два ветвления:
   1. После classify_intent → 6 веток по типу запроса
   2. Внутри DATA-ветки → execute или только вернуть SQL-скрипт
+  3. После execute_query → retry (fix_sql) или format_response
 """
 
 from __future__ import annotations
 
+import logging
+
 from langgraph.graph import StateGraph, END
 
-import sys
-from pathlib import Path
-
 from agent.state import AgentState
-from schemes.models import QueryType, ToolStatus
+from schemas.models import QueryType, ToolStatus
 from agent.nodes import (
     classify_intent,
     search_metadata_node,
     get_schema_node,
     generate_sql_node,
     execute_query_node,
+    fix_sql_node,
     format_response_node,
     handle_unknown_node,
     unsafe_query_node,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ===============================
 # Функции-роутеры (определяют, какое ребро выбрать)
 # ===============================
+
+# Максимальное число попыток исправить SQL после ошибки выполнения.
+# Итого запросов к БД не более MAX_SQL_RETRIES + 1:
+# 1 исходный + до 2 исправленных = 3 попытки.
+MAX_SQL_RETRIES = 2
+
 
 def route_by_query_type(state: AgentState) -> str:
     """
@@ -50,7 +59,7 @@ def route_by_query_type(state: AgentState) -> str:
     }
 
     next_node = route_map.get(classification.query_type, "handle_unknown")
-    print(f"[router-1] {classification.query_type} → {next_node}")
+    logger.info(f"[router-1] {classification.query_type} → {next_node}")
     return next_node
 
 
@@ -78,11 +87,36 @@ def route_after_sql_generation(state: AgentState) -> str:
     )
 
     if is_data_query and is_sql_ok:
-        print("[router-2] DATA + безопасный SQL → execute_query")
+        logger.info("[router-2] DATA + безопасный SQL → execute_query")
         return "execute_query"
     else:
-        print("[router-2] SCRIPT или небезопасный SQL → format_response")
+        logger.info("[router-2] SCRIPT или небезопасный SQL → format_response")
         return "format_response"
+
+
+def route_after_execute(state: AgentState) -> str:
+    """
+    Роутер 3: после выполнения SQL — исправить или форматировать ответ?
+
+    Retry запускается только при ERROR (синтаксическая/runtime-ошибка сервера).
+    EMPTY (запрос выполнился, но данных нет) — не ошибка, идём к форматированию.
+    """
+    execute_result = state.get("execute_result")
+    retry_count    = state.get("sql_retry_count", 0)
+
+    if (
+        execute_result is not None
+        and execute_result.status == ToolStatus.ERROR
+        and retry_count < MAX_SQL_RETRIES
+    ):
+        logger.info(
+            f"[router-3] SQL ошибка, попытка исправления "
+            f"{retry_count + 1}/{MAX_SQL_RETRIES} → fix_sql"
+        )
+        return "fix_sql"
+
+    logger.info(f"[router-3] → format_response (retry_count={retry_count})")
+    return "format_response"
 
 
 # ===============================
@@ -102,6 +136,7 @@ def build_graph() -> StateGraph:
     graph.add_node("get_schema",         get_schema_node)
     graph.add_node("generate_sql",       generate_sql_node)
     graph.add_node("execute_query",      execute_query_node)
+    graph.add_node("fix_sql",            fix_sql_node)        # новый узел
     graph.add_node("format_response",    format_response_node)
     graph.add_node("handle_unknown",     handle_unknown_node)
     graph.add_node("unsafe_query",       unsafe_query_node)
@@ -138,31 +173,26 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # = После выполнения SQL → форматируем ответ =======
-    graph.add_edge("execute_query", "format_response")
+    # = После выполнения SQL → исправить или форматировать (роутер 3) ===
+    graph.add_conditional_edges(
+        source="execute_query",
+        path=route_after_execute,
+        path_map={
+            "fix_sql":        "fix_sql",
+            "format_response": "format_response",
+        },
+    )
+
+    # = После исправления SQL → повторить выполнение ==========
+    # Петля: fix_sql всегда возвращается к execute_query.
+    # Остановка гарантируется счётчиком sql_retry_count в route_after_execute.
+    graph.add_edge("fix_sql", "execute_query")
 
     # = Финальные узлы → END =================
     graph.add_edge("format_response", END)
     graph.add_edge("handle_unknown",  END)
     graph.add_edge("unsafe_query",    END)
     return graph.compile()
-
-
-# ===============================
-# Запуск без трейсинга (для совместимости)
-# ===============================
-
-def run(user_query: str) -> AgentState:
-    """Запускает граф и возвращает финальный стейт (без LangFuse)."""
-    app = build_graph()
-
-    initial_state: AgentState = {
-        "user_query": user_query,
-        "steps":      [],
-    }
-
-    final_state = app.invoke(initial_state)
-    return final_state
 
 
 # ===============================

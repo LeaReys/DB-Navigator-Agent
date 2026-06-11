@@ -1,12 +1,13 @@
 """
 Индексация схемы БД в ChromaDB.
   1. Читает метаданные всех таблиц из MS SQL (sys.tables + sys.columns)
-  2. Превращает каждую таблицу в текстовый документ (chunk)
-  3. Загружает документы в ChromaDB (локальный векторный стор)
+  2. Обогащает каждый документ синонимами и связями из domain_knowledge.yaml
+  3. Загружает документы в ChromaDB
 
 Когда запускать:
   - Первый запуск проекта
   - После значительных изменений в схеме БД
+  - После правки domain_knowledge.yaml  ← не забудьте --force
   - По расписанию (например, раз в неделю)
 
 Индекс сохраняется на диск (chroma_persist_dir из конфига),
@@ -17,7 +18,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
+import yaml
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
@@ -33,6 +36,9 @@ COLLECTION_NAME = "db_schema"
 # multilingual-e5-small: понимает русский и английский, весит ~120MB,
 # работает быстро даже без GPU.
 EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+
+# Путь к файлу доменных знаний (синонимы, связи, бизнес-описания)
+_KNOWLEDGE_FILE = Path(__file__).with_name("domain_knowledge.yaml")
 
 
 # =============================================================
@@ -86,7 +92,7 @@ ORDER BY c.column_id
 class SchemaDocument:
     """Текстовое представление таблицы для индексации."""
     doc_id:      str   # уникальный ID: "server__database__table"
-    text:        str   # текст, который будет векторизован
+    text:        str   # текст для векторизации
     table_name:  str
     server:      str
     database:    str
@@ -106,6 +112,34 @@ class SchemaIndexer:
     def __init__(self) -> None:
         self._client     = self._init_chroma()
         self._collection = self._get_or_create_collection()
+        self._kb         = self._load_knowledge_base()  # ДОБАВЛЕНО: загружаем доменные знания
+
+    # == Загрузка доменных знаний ==============================
+
+    def _load_knowledge_base(self) -> dict:
+        """
+        Загружает domain_knowledge.yaml - файл с доп.знаниями о БД.
+        Если файл не найден — работаем без него (только схема из БД).
+        """
+        if not _KNOWLEDGE_FILE.exists():
+            logger.warning(
+                f"Файл доменных знаний не найден: {_KNOWLEDGE_FILE}. "
+                "Индексация пройдёт только по схеме БД."
+            )
+            return {}
+
+        try:
+            raw = yaml.safe_load(_KNOWLEDGE_FILE.read_text(encoding="utf-8"))
+            tables_kb = raw.get("tables", {})
+            logger.info(
+                f"Доменные знания загружены: {_KNOWLEDGE_FILE.name}, "
+                f"таблиц в файле: {len(tables_kb)}"
+            )
+            return tables_kb
+
+        except Exception as e:
+            logger.error(f"Ошибка чтения {_KNOWLEDGE_FILE}: {e}. Продолжаем без KB.")
+            return {}
 
     # == Инициализация ChromaDB ================================
 
@@ -139,6 +173,10 @@ class SchemaIndexer:
         Args:
             force: если True — удаляет старый индекс и строит заново.
                    По умолчанию пропускает уже проиндексированные таблицы.
+
+                   Запускайте с --force всегда, когда:
+                     - правили domain_knowledge.yaml
+                     - добавили/изменили MS_Description в БД
 
         Returns:
             Словарь со статистикой: {"indexed": N, "skipped": N, "errors": N}
@@ -241,24 +279,22 @@ class SchemaIndexer:
     ) -> SchemaDocument:
         """
         Строит текстовый документ из метаданных таблицы.
-
-        Качество RAG-поиска сильно зависит от того, как именно
-        мы формируем текст для векторизации. Здесь используем
-        структурированный шаблон, который хорошо работает
-        с multilingual-e5-small.
+        Источники данных:
+          - sys.tables / sys.columns / MS_Description → факты из БД
+          - domain_knowledge.yaml → синонимы и связи (чего нет в схеме)
         """
-        # Формируем описание каждой колонки
+
+        # --- Секция 1: колонки (из БД) ---
         col_lines: list[str] = []
         col_names: list[str] = []
 
         for col in columns_raw:
-            name    = col["column_name"]
-            dtype   = col["data_type"]
-            col_desc= col.get("column_description") or ""
-            nullable= "NULL" if col["is_nullable"] else "NOT NULL"
+            name     = col["column_name"]
+            dtype    = col["data_type"]
+            col_desc = col.get("column_description") or ""
+            nullable = "NULL" if col["is_nullable"] else "NOT NULL"
 
             col_names.append(name)
-
             line = f"  - {name} ({dtype}, {nullable})"
             if col_desc:
                 line += f": {col_desc}"
@@ -267,18 +303,49 @@ class SchemaIndexer:
         columns_text = "\n".join(col_lines)
         columns_str  = ", ".join(col_names)
 
-        # Итоговый текст для векторизации.
-        # Структура важна: сначала имя и описание (самое значимое),
-        # потом перечень колонок.
-        text = f"""
-            Таблица: {table_name}
-            База данных: {database}
-            Сервер: {server}
-            Описание: {table_desc or 'нет описания'}
+        # --- Секция 2: доменные знания из YAML ---
+        kb = self._kb.get(table_name, {})
+        synonyms     = kb.get("synonyms", [])
+        biz_desc     = (kb.get("business_description") or "").strip()
+        relationships = kb.get("relationships", [])
+        enum_fields  = kb.get("enum_fields", {})
 
-            Колонки:
-            {columns_text}
-        """.strip()
+        # --- Сборка итогового текста ---
+        lines: list[str] = [
+            f"Таблица: {table_name}",
+            f"База данных: {database}",
+            f"Описание: {table_desc or 'нет описания'}",
+        ]
+
+        # Бизнес-смысл и синонимы — первыми после базовой инфо,
+        # чтобы они весомо влияли на вектор
+        if biz_desc:
+            lines.append(f"Бизнес-смысл: {biz_desc}")
+        if synonyms:
+            lines.append(f"Синонимы и бизнес-термины: {', '.join(synonyms)}")
+
+        # Связи — важны для SQL-генерации и навигационных запросов
+        if relationships:
+            lines.append("Связи с другими таблицами:")
+            for rel in relationships:
+                lines.append(f"  {rel}")
+
+        # Enum-поля — если есть статусы/коды, описываем как их читать
+        if enum_fields:
+            lines.append("Поля-справочники (enum):")
+            for field_name, field_info in enum_fields.items():
+                desc = field_info.get("description", "")
+                lines.append(f"  - {field_name}: {desc}")
+
+        lines.append("Колонки:")
+        lines.append(columns_text)
+
+        text = "\n".join(lines)
+
+        logger.debug(
+            f"Документ '{table_name}': {len(col_names)} колонок, "
+            f"синонимов={len(synonyms)}, связей={len(relationships)}"
+        )
 
         return SchemaDocument(
             doc_id      = f"{server}__{database}__{table_name}",
@@ -293,11 +360,13 @@ class SchemaIndexer:
     # == Сохранение в ChromaDB =================================
 
     def _upsert_document(self, doc: SchemaDocument) -> None:
-        """Добавляет или обновляет документ в коллекции."""
+        """
+        Добавляет или обновляет документ в коллекции.
+        """
         self._collection.upsert(
-            ids        = [doc.doc_id],
-            documents  = [doc.text],
-            metadatas  = [{
+            ids       = [doc.doc_id],
+            documents = [f"passage: {doc.text}"],   # ← префикс e5
+            metadatas = [{
                 "table_name":  doc.table_name,
                 "server":      doc.server,
                 "database":    doc.database,
@@ -316,6 +385,8 @@ class SchemaIndexer:
             "collection":      COLLECTION_NAME,
             "persist_dir":     settings.chroma_persist_dir,
             "embedding_model": EMBEDDING_MODEL,
+            "knowledge_file":  str(_KNOWLEDGE_FILE),
+            "kb_tables_count": len(self._kb),
         }
 
 
@@ -327,7 +398,7 @@ if __name__ == "__main__":
     import json
 
     from dotenv import load_dotenv
-    load_dotenv() 
+    load_dotenv()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

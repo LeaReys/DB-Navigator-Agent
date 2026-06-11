@@ -10,8 +10,19 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+# Паттерн для проверки SQL на мутирующие операторы — граница слова \b,
+# чтобы не срабатывать ложно на имена колонок вида R_CREATE_USER_ID.
+# Дублируем здесь намеренно: evaluator — изолированный модуль оценки и
+# использует свой, более узкий набор операторов (без EXEC/GRANT/...),
+# поэтому не зависит от schemas.sql_safety.
+_EVAL_MUTATION_PATTERN = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE)\b",
+    re.IGNORECASE,
+)
 
 # =============================================================
 # expected_tools → шаги в AgentState.steps
@@ -171,11 +182,10 @@ def _check_sql_readonly(case: dict, state: dict) -> CriterionResult:
         # SQL не генерировался — критерий не применим, считаем OK
         return CriterionResult("sql_readonly", True, "no SQL generated")
 
-    sql     = (sql_result.generated.sql or "").upper()
-    banned  = {"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER", "CREATE"}
-    found   = [kw for kw in banned if kw in sql]
-    passed  = len(found) == 0 and sql_result.generated.is_safe
-    detail  = f"forbidden_keywords={found}" if not passed else "ok"
+    sql    = sql_result.generated.sql or ""
+    found  = _EVAL_MUTATION_PATTERN.findall(sql)
+    passed = len(found) == 0 and sql_result.generated.is_safe
+    detail = f"forbidden_keywords={[f.upper() for f in found]}" if not passed else "ok"
     return CriterionResult("sql_readonly", passed, detail)
 
 
