@@ -1,8 +1,6 @@
 """
 Сборка графа LangGraph.
 
-Этот модуль только строит граф — запуск вынесен в agent/runner.py.
-
 Два ветвления:
   1. После classify_intent → 6 веток по типу запроса
   2. Внутри DATA-ветки → execute или только вернуть SQL-скрипт
@@ -191,3 +189,67 @@ def build_graph() -> StateGraph:
     graph.add_edge("handle_unknown",  END)
     graph.add_edge("unsafe_query",    END)
     return graph.compile()
+
+
+# ===============================
+# Запуск без трейсинга (для совместимости)
+# ===============================
+
+def run(user_query: str) -> AgentState:
+    """Запускает граф и возвращает финальный стейт (без LangFuse)."""
+    app = build_graph()
+
+    initial_state: AgentState = {
+        "user_query": user_query,
+        "steps":      [],
+    }
+
+    final_state = app.invoke(initial_state)
+    return final_state
+
+
+# ===============================
+# Запуск с LangFuse трейсингом (основной в production)
+# ===============================
+
+def run_traced(
+    user_query: str,
+    session_id: str,
+    graph=None,
+    tags: list[str] | None = None,
+) -> AgentState:
+    """
+    Запускает граф с LangFuse трейсингом.
+    """
+    from observability.tracer import get_handler, flush
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if graph is None:
+        graph = build_graph()
+
+    initial_state: AgentState = {
+        "user_query": user_query,
+        "steps":      [],
+    }
+
+    handler = get_handler(session_id, user_query, tags=tags)
+
+    if handler:
+        config = {
+            "callbacks": [handler],
+            "run_name": "db-navigator-agent",
+            "tags": tags or [],
+            "metadata": {
+                "langfuse_session_id": session_id,
+                "query": user_query,
+            },
+        }
+
+        final_state = graph.invoke(initial_state, config=config)
+        flush(handler)
+    else:
+        logger.debug("LangFuse недоступен, запуск без трейсинга")
+        final_state = graph.invoke(initial_state)
+
+    return final_state

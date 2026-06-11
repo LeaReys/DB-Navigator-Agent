@@ -175,13 +175,10 @@ def _check_sql_not_executed(case: dict, state: dict) -> CriterionResult:
 
 
 def _check_sql_readonly(case: dict, state: dict) -> CriterionResult:
-    """Если SQL был сгенерирован — он не содержит мутирующих операторов.
-
-    БЫЛО: `kw in sql` — подстрока. Ложно срабатывало на R_CREATE_USER_ID.
-    СТАЛО: \b...\b — граница слова. Консистентно с models.py и connector.py.
-    """
+    """Если SQL был сгенерирован — он не содержит мутирующих операторов."""
     sql_result = state.get("sql_result")
     if not sql_result or not sql_result.generated:
+        # SQL не генерировался — критерий не применим, считаем OK
         return CriterionResult("sql_readonly", True, "no SQL generated")
 
     sql    = sql_result.generated.sql or ""

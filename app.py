@@ -28,7 +28,19 @@ logging.getLogger("agent").setLevel(logging.INFO)
 logging.getLogger("llm").setLevel(logging.INFO)
 logging.getLogger("observability").setLevel(logging.INFO)
 
-from display import C, _c     # ANSI-утилиты (единый источник, без дублирования)
+
+# =============================================================
+# Терминальный вывод
+# =============================================================
+
+class C:
+    """ANSI-коды цветов."""
+    RESET  = "\033[0m";  BOLD   = "\033[1m";  DIM    = "\033[2m"
+    CYAN   = "\033[36m"; GREEN  = "\033[32m";  YELLOW = "\033[33m"
+    RED    = "\033[31m"
+
+def _c(color: str, text: str) -> str:
+    return f"{color}{text}{C.RESET}"
 
 def _section(label: str) -> str:
     return f"\n{C.BOLD}{C.YELLOW}▶ {label}{C.RESET}"
@@ -109,7 +121,7 @@ def print_result(state: dict, elapsed: float) -> None:
 
 def _run_query(graph, query: str, session_id: str, tags: list[str]) -> None:
     """Выполняет один запрос через граф и печатает результат."""
-    from agent.runner import run_traced
+    from agent.graph import run_traced
 
     print(f"\n{C.BOLD}{C.CYAN}{'='*60}{C.RESET}\n{C.BOLD}ЗАПРОС: {query}{C.RESET}")
     t0 = time.perf_counter()
