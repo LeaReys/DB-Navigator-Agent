@@ -113,6 +113,7 @@ def _make_openrouter(model_name: str, temperature: float) -> BaseChatModel:
         openai_api_key  = settings.openrouter_api_key,
         openai_api_base = "https://openrouter.ai/api/v1",
         temperature     = temperature,
+        max_tokens      = settings.llm_max_tokens,
     )
 
 
