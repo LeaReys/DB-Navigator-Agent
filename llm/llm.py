@@ -13,14 +13,82 @@
 from __future__ import annotations
 
 import logging
+import time
+import re
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Any
 
 from langchain_core.language_models import BaseChatModel
 
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_retry_after(exc: Exception) -> float | None:
+    """
+    Пытается достать Retry-After из текста исключения.
+    """
+    text = str(exc)
+    m = re.search(r"retry.?after[:\s]+([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
+    if m:
+        return float(m.group(1))
+    # Иногда приходит просто число секунд в конце сообщения
+    m = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*s(?:ec(?:onds?)?)?", text, re.IGNORECASE)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    """True если исключение — 429 Rate Limit от провайдера."""
+    text = str(exc).lower()
+    return (
+        "429" in text
+        or "rate limit" in text
+        or "too many requests" in text
+        or "ratelimit" in text
+    )
+
+
+def invoke_with_retry(chain: Any, messages: list, node: str = "") -> Any:
+    """
+    Вызывает chain.invoke(messages) с автоматическим retry при 429.
+
+    Стратегия:
+      1. Пробуем вызов.
+      2. Если 429 — смотрим Retry-After в теле ответа; если нет — экспоненциальный backoff.
+      3. После _RETRY_MAX_ATTEMPTS неудачных попыток пробрасываем исключение наверх
+         (узел графа поймает его в своём except-блоке).
+    """
+    delay = settings.llm_retry_base_delay
+    last_exc: Exception | None = None
+
+    for attempt in range(1, settings.llm_retry_max_attempts + 1):
+        try:
+            return chain.invoke(messages)
+
+        except Exception as exc:
+            if not _is_rate_limit(exc):
+                raise  # не 429 — не трогаем, пробрасываем сразу
+
+            last_exc = exc
+            retry_after = _extract_retry_after(exc)
+            wait = retry_after if retry_after else delay
+
+            if attempt < settings.llm_retry_max_attempts:
+                logger.warning(
+                    f"[{node}] 429 Rate Limit (попытка {attempt}/{settings.llm_retry_max_attempts}), "
+                    f"жду {wait:.1f}s..."
+                )
+                time.sleep(wait)
+                delay *= settings.llm_retry_multiplier
+            else:
+                logger.error(
+                    f"[{node}] 429 Rate Limit — все {settings.llm_retry_max_attempts} попытки исчерпаны."
+                )
+
+    raise last_exc  # type: ignore[misc]
 
 
 # ===============================
@@ -45,6 +113,7 @@ def _make_openrouter(model_name: str, temperature: float) -> BaseChatModel:
         openai_api_key  = settings.openrouter_api_key,
         openai_api_base = "https://openrouter.ai/api/v1",
         temperature     = temperature,
+        max_tokens      = settings.llm_max_tokens,
     )
 
 
