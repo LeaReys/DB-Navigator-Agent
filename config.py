@@ -109,11 +109,13 @@ class Settings(BaseSettings):
     )
 
     # == RAG / ChromaDB ========================================
-    chroma_persist_dir: str = "./chroma_db"   # папка для хранения векторного стора
-    rag_top_k:          int = 5               # сколько чанков возвращать при поиске
+    chroma_persist_dir: str = str(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
+    )
+    rag_top_k: int = 5               # сколько чанков возвращать при поиске
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
