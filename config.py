@@ -99,6 +99,11 @@ class Settings(BaseSettings):
     # USE_OLLAMA=true  → локальная Ollama
     # USE_OLLAMA=false → OpenRouter
     use_ollama: bool = Field(default=False, validation_alias="USE_OLLAMA")
+    
+    # LLM retry при 429
+    llm_retry_max_attempts: int   = Field(default=3,   validation_alias="LLM_RETRY_MAX_ATTEMPTS")
+    llm_retry_base_delay:   float = Field(default=5.0, validation_alias="LLM_RETRY_BASE_DELAY")
+    llm_retry_multiplier:   float = Field(default=2.0, validation_alias="LLM_RETRY_MULTIPLIER")
 
     # == LangFuse =============================================
     langfuse_public_key:  str = Field(default="", validation_alias="LANGFUSE_PUBLIC_KEY")
