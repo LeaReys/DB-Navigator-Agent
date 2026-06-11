@@ -49,6 +49,7 @@
 | `get_schema` | Получение структуры таблицы из sys.columns |
 | `generate_sql` | Генерация T-SQL через LLM (большая модель) |
 | `execute_query` | Выполнение SELECT через pyodbc (только read-only) |
+| `fix_sql` | Самоисправление SQL после ошибки выполнения (retry-цикл) |
 | `format_response` | Формирование финального ответа (малая модель) |
 | `handle_unknown` | Ответ при непонятном запросе |
 | `unsafe_query` | Блокировка запросов на изменение данных |
@@ -84,16 +85,20 @@ flowchart TD
     R -->|Да| E[execute_query<br/>Выполнение SELECT через pyodbc]
     R -->|Нет| F
  
-    E --> F
+    E --> G{Ошибка выполнения<br/>и есть попытки?}
+    G -->|Да| X[fix_sql<br/>Исправление SQL]
+    G -->|Нет| F
+    X --> E
  
     F --> END([END])
     H --> END
     U --> END
 ```
  
-**Два ветвления:**
+**Три ветвления:**
 1. **Роутер 1** — после `classify_intent`: 6 веток по типу запроса
 2. **Роутер 2** — после `generate_sql`: выполнять SQL или только вернуть скрипт
+3. **Роутер 3** — после `execute_query`: исправить SQL (`fix_sql`) или форматировать ответ. Цикл `fix_sql → execute_query` ограничен счётчиком `sql_retry_count` (до 2 попыток).
 ---
 
 ## 5. Edge cases
@@ -121,6 +126,14 @@ flowchart TD
 - генерирует только read-only SQL;
 - объясняет ответ на русском языке;
 - проходит benchmark из тестовых кейсов с success rate ≥ 80%.
+
+**Метрики (считает `benchmark/metrics.py`, прогон — `python app.py --bench`):**
+- `success rate` (overall pass rate) — доля кейсов, где прошли все критерии;
+- `latency` — среднее и p90 (см. `p90_latency_s`); по категориям — в разбивке `by_category`;
+- `classification_accuracy`, `tool_call_accuracy`, `sql_safety_rate` — точность по типам проверок;
+- `cost per run` / расход токенов — доступны в дашборде LangFuse по трейсам прогонов.
+
+Результаты каждого прогона сохраняются в `benchmark/results/run_*.json`.
 
 ---
  
@@ -194,8 +207,8 @@ python app.py --help
 ```
 db_navigator/
 ├── agent/
-│   ├── graph.py            # LangGraph граф (build_graph, run_traced)
-│   ├── nodes.py            # Логика каждого узла
+│   ├── graph.py            # LangGraph граф (build_graph, run_traced, 3 роутера)
+│   ├── nodes.py            # Логика каждого узла (включая fix_sql retry)
 │   └── state.py            # AgentState (TypedDict + Pydantic-модели)
 ├── observability/
 │   ├── __init__.py
@@ -212,8 +225,9 @@ db_navigator/
 │   └── prompts.py          # Шаблоны промптов для всех LLM-узлов
 ├── db/
 │   └── connector.py        # pyodbc-менеджер (пул соединений, read-only guard)
-├── schemes/
-│   └── models.py           # Pydantic-модели для всех выходов агента
+├── schemas/
+│   ├── models.py           # Pydantic-модели для всех выходов агента
+│   └── sql_safety.py       # Общий паттерн проверки SQL на мутации
 ├── benchmark/
 │   ├── evaluator.py        # Критерии оценки каждого кейса
 │   ├── metrics.py          # Агрегация: pass rate, latency, by_category
@@ -243,7 +257,7 @@ db_navigator/
 - [x] реальный `pyodbc` metadata tool;
 - [x] read-only SQL  через SQL Server с ограниченными правами;
 - [ ] (?) HITL - уточняющие вопросы у пользователя;
-- [ ] Retry;
+- [x] Retry (SQL self-correction loop: fix_sql → execute_query, до 2 попыток);
 - [x] LangFuse;
 - [x] benchmark и evals;
 - [ ] security-checklist;
