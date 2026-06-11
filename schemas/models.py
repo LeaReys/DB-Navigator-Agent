@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from schemas.sql_safety import find_mutations
 
@@ -28,14 +28,19 @@ class QueryType(str, Enum):
 
 class ClassificationResult(BaseModel):
     """Выход узла classify_intent."""
-    query_type: QueryType
+    query_type: QueryType = Field(
+        validation_alias=AliasChoices("query_type", "type"),
+    )
     confidence: float = Field(ge=0.0, le=1.0, description="Уверенность классификатора")
     reasoning: str    = Field(description="Краткое объяснение решения")
     # Подсказки, извлечённые из запроса
     mentioned_tables:   list[str] = Field(default_factory=list)
     mentioned_entities: list[str] = Field(default_factory=list, description="id, имена и пр.")
 
-    model_config = {"use_enum_values": True}
+    model_config = {
+        "use_enum_values": True,
+        "populate_by_name": True,
+    }
 
 
 # =============================================
