@@ -16,8 +16,9 @@ from typing import Any
 
 # Паттерн для проверки SQL на мутирующие операторы — граница слова \b,
 # чтобы не срабатывать ложно на имена колонок вида R_CREATE_USER_ID.
-# Дублируем здесь намеренно: evaluator — изолированный модуль,
-# не должен зависеть от внутренних деталей schemes/models.py.
+# Дублируем здесь намеренно: evaluator — изолированный модуль оценки и
+# использует свой, более узкий набор операторов (без EXEC/GRANT/...),
+# поэтому не зависит от schemas.sql_safety.
 _EVAL_MUTATION_PATTERN = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE)\b",
     re.IGNORECASE,
