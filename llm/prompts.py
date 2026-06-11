@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from schemas.models import ToolStatus
+
 
 # =============================================================
 # УЗЕЛ 1: Классификация запроса
@@ -263,7 +265,6 @@ def build_results_context(state: dict) -> str:
             parts.append(f"SQL сгенерирован. {sql_result.generated.explanation}")
 
     if execute_result := state.get("execute_result"):
-        from schemes.models import ToolStatus
         if execute_result.status == ToolStatus.SUCCESS:
             rows = execute_result.rows[:5]
             rows_lines: list[str] = []

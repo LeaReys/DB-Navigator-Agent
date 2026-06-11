@@ -16,6 +16,7 @@ from schemas.models import (
     SQLGenerationResult,
     GeneratedSQL,
     ExecuteQueryResult,
+    TableSchemaResult,
     AgentResponse,
     SourceReference,
 )
@@ -36,6 +37,15 @@ def _add_step(step: str) -> list[str]:
     return [step]
 
 
+def _default_target() -> tuple[str, str]:
+    """
+    (server_alias, database) первого сервера из конфига —
+    запасной вариант, когда таблицу не удалось определить из стейта.
+    """
+    first = settings.servers[0]
+    return first.alias, first.databases[0].name
+
+
 def _resolve_target(state: AgentState) -> tuple[str, str]:
     """
     Определяет (server_alias, database) для execute_query.
@@ -45,13 +55,12 @@ def _resolve_target(state: AgentState) -> tuple[str, str]:
         if meta.chunks:
             top = meta.chunks[0]
             return top.server, top.database
- 
+
     if schema := state.get("schema_result"):
         if schema.server and schema.database:
             return schema.server, schema.database
- 
-    first = settings.servers[0]
-    return first.alias, first.databases[0].name
+
+    return _default_target()
 
 
 # ===============================
@@ -132,8 +141,6 @@ def get_schema_node(state: AgentState) -> dict:
          б) прямой поиск по mentioned_tables[0] не нашёл таблицу —
             значит, классификатор отдал бизнес-термин, RAG его разрешает.
     """
-    from schemes.models import TableSchemaResult
-
     query          = state["user_query"]
     classification = state.get("classification")
     logger.info(f"[get_schema] '{query}'")
@@ -150,9 +157,8 @@ def get_schema_node(state: AgentState) -> dict:
 
     if mentioned:
         # Сначала пробуем имя напрямую из классификатора
-        table    = mentioned[0]
-        server   = settings.servers[0].alias
-        database = settings.servers[0].databases[0].name
+        table             = mentioned[0]
+        server, database  = _default_target()
 
         result = get_table_schema(server, database, table)
 
@@ -372,6 +378,41 @@ def unsafe_query_node(state: AgentState) -> dict:
 # ===============================
 # УЗЕЛ 7: Форматирование финального ответа
 # ===============================
+def _collect_response_metadata(
+    state: AgentState,
+) -> tuple[list[SourceReference], str | None, bool]:
+    """
+    Собирает метаданные финального ответа из стейта:
+      - sources:  источники (таблицы из RAG + схема)
+      - sql_text: сгенерированный SQL, если был
+      - has_data: True, если execute_query вернул данные
+
+    Вынесено из format_response_node, чтобы отделить сбор данных
+    от вызова LLM — так узел читается и тестируется проще.
+    """
+    sources: list[SourceReference] = []
+    sql_text: str | None = None
+    has_data = False
+
+    if meta := state.get("metadata_result"):
+        for chunk in meta.chunks:
+            sources.append(SourceReference(
+                server=chunk.server, database=chunk.database, table=chunk.table_name,
+            ))
+    if schema := state.get("schema_result"):
+        if schema.server:
+            sources.append(SourceReference(
+                server=schema.server, database=schema.database, table=schema.table,
+            ))
+    if sql := state.get("sql_result"):
+        if sql.generated:
+            sql_text = sql.generated.sql
+    if exec_r := state.get("execute_result"):
+        has_data = exec_r.status == ToolStatus.SUCCESS
+
+    return sources, sql_text, has_data
+
+
 def format_response_node(state: AgentState) -> dict:
     """
     Формирует финальный ответ через малую LLM.
@@ -399,28 +440,9 @@ def format_response_node(state: AgentState) -> dict:
     except Exception as e:
         logger.error(f"[format_response] LLM error: {e}")
         answer = build_results_context(state)  # текстовый fallback
- 
-    # Собираем метаданные ответа
-    sources: list[SourceReference] = []
-    sql_text: str | None = None
-    has_data = False
- 
-    if meta := state.get("metadata_result"):
-        for chunk in meta.chunks:
-            sources.append(SourceReference(
-                server=chunk.server, database=chunk.database, table=chunk.table_name,
-            ))
-    if schema := state.get("schema_result"):
-        if schema.server:
-            sources.append(SourceReference(
-                server=schema.server, database=schema.database, table=schema.table,
-            ))
-    if sql := state.get("sql_result"):
-        if sql.generated:
-            sql_text = sql.generated.sql
-    if exec_r := state.get("execute_result"):
-        has_data = exec_r.status == ToolStatus.SUCCESS
- 
+
+    sources, sql_text, has_data = _collect_response_metadata(state)
+
     final = AgentResponse(
         answer=answer, query_type=query_type, sql=sql_text,
         sources=sources,

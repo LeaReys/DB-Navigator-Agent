@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from langgraph.graph import StateGraph, END
 
 from agent.state import AgentState
@@ -24,6 +26,8 @@ from agent.nodes import (
     handle_unknown_node,
     unsafe_query_node,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ===============================
@@ -55,7 +59,7 @@ def route_by_query_type(state: AgentState) -> str:
     }
 
     next_node = route_map.get(classification.query_type, "handle_unknown")
-    print(f"[router-1] {classification.query_type} → {next_node}")
+    logger.info(f"[router-1] {classification.query_type} → {next_node}")
     return next_node
 
 
@@ -83,10 +87,10 @@ def route_after_sql_generation(state: AgentState) -> str:
     )
 
     if is_data_query and is_sql_ok:
-        print("[router-2] DATA + безопасный SQL → execute_query")
+        logger.info("[router-2] DATA + безопасный SQL → execute_query")
         return "execute_query"
     else:
-        print("[router-2] SCRIPT или небезопасный SQL → format_response")
+        logger.info("[router-2] SCRIPT или небезопасный SQL → format_response")
         return "format_response"
 
 
@@ -105,13 +109,13 @@ def route_after_execute(state: AgentState) -> str:
         and execute_result.status == ToolStatus.ERROR
         and retry_count < MAX_SQL_RETRIES
     ):
-        print(
+        logger.info(
             f"[router-3] SQL ошибка, попытка исправления "
             f"{retry_count + 1}/{MAX_SQL_RETRIES} → fix_sql"
         )
         return "fix_sql"
 
-    print(f"[router-3] → format_response (retry_count={retry_count})")
+    logger.info(f"[router-3] → format_response (retry_count={retry_count})")
     return "format_response"
 
 
@@ -189,23 +193,6 @@ def build_graph() -> StateGraph:
     graph.add_edge("handle_unknown",  END)
     graph.add_edge("unsafe_query",    END)
     return graph.compile()
-
-
-# ===============================
-# Запуск без трейсинга (для совместимости)
-# ===============================
-
-def run(user_query: str) -> AgentState:
-    """Запускает граф и возвращает финальный стейт (без LangFuse)."""
-    app = build_graph()
-
-    initial_state: AgentState = {
-        "user_query": user_query,
-        "steps":      [],
-    }
-
-    final_state = app.invoke(initial_state)
-    return final_state
 
 
 # ===============================
