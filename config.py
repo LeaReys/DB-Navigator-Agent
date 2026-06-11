@@ -65,55 +65,65 @@ class Settings(BaseSettings):
     query_timeout:   int = 30     # секунд на выполнение запроса
 
     # == OpenRouter ============================================
-    openrouter_api_key: str = Field(default="", env="OPENROUTER_API_KEY")
+    openrouter_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
 
     openrouter_model_small: str = Field(
         default="mistralai/mistral-7b-instruct:free",
-        env="OPENROUTER_MODEL_SMALL",
+        validation_alias="OPENROUTER_MODEL_SMALL",
     )
     openrouter_model_large: str = Field(
         default="deepseek/deepseek-coder-v2-instruct:free",
-        env="OPENROUTER_MODEL_LARGE",
+        validation_alias="OPENROUTER_MODEL_LARGE",
     )
- 
+
     # == Ollama ================================================
     ollama_host: str = Field(
         default="http://localhost:11434",
-        env="OLLAMA_HOST",
+        validation_alias="OLLAMA_HOST",
     )
 
     ollama_model_small: str = Field(
         default="llama3.1:8b",          # qwen2.5:3b
-        env="OLLAMA_MODEL_SMALL",
+        validation_alias="OLLAMA_MODEL_SMALL",
     )
     ollama_model_large: str = Field(    # qwen2.5-coder:7b
         default="deepseek-coder-v2:16b",
-        env="OLLAMA_MODEL_LARGE",
+        validation_alias="OLLAMA_MODEL_LARGE",
     )
     ollama_think: bool = Field(
         default=False,
-        env="OLLAMA_THINK",
+        validation_alias="OLLAMA_THINK",
     )
 
     # == LLM ==================================================
     # USE_OLLAMA=true  → локальная Ollama
     # USE_OLLAMA=false → OpenRouter
-    use_ollama: bool = Field(default=False, env="USE_OLLAMA")
+    use_ollama: bool = Field(default=False, validation_alias="USE_OLLAMA")
+
+    # Макс. кол-во токенов в ответе от LLM — важно для контроля затрат и предотвращения слишком длинных ответов.
+    llm_max_tokens: int = Field(default=2048, validation_alias="LLM_MAX_TOKENS")
+    
+    # LLM retry при 429
+    llm_retry_max_attempts: int   = Field(default=3,   validation_alias="LLM_RETRY_MAX_ATTEMPTS")
+    llm_retry_base_delay:   float = Field(default=5.0, validation_alias="LLM_RETRY_BASE_DELAY")
+    llm_retry_multiplier:   float = Field(default=2.0, validation_alias="LLM_RETRY_MULTIPLIER")
 
     # == LangFuse =============================================
-    langfuse_public_key:  str = Field(default="", env="LANGFUSE_PUBLIC_KEY")
-    langfuse_secret_key:  str = Field(default="", env="LANGFUSE_SECRET_KEY")
+    langfuse_public_key:  str = Field(default="", validation_alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key:  str = Field(default="", validation_alias="LANGFUSE_SECRET_KEY")
     langfuse_host:        str = Field(
         default="https://cloud.langfuse.com",
-        env="LANGFUSE_HOST",
+        validation_alias="LANGFUSE_HOST",
     )
 
     # == RAG / ChromaDB ========================================
-    chroma_persist_dir: str = "./chroma_db"   # папка для хранения векторного стора
-    rag_top_k:          int = 5               # сколько чанков возвращать при поиске
+    chroma_persist_dir: str = str(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
+    )
+    rag_top_k: int = 5               # сколько чанков возвращать при поиске
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

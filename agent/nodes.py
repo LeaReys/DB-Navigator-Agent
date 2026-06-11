@@ -71,7 +71,7 @@ def classify_intent(state: AgentState) -> dict:
     Классифицирует запрос через structured output малой LLM.
     При ошибке LLM — не роняем агента, возвращаем UNKNOWN.
     """
-    from llm.llm import get_llm
+    from llm.llm import get_llm, invoke_with_retry
     from llm.prompts import CLASSIFY_SYSTEM, CLASSIFY_USER
  
     query = state["user_query"]
@@ -79,10 +79,14 @@ def classify_intent(state: AgentState) -> dict:
  
     try:
         chain = get_llm("small").with_structured_output(ClassificationResult)
-        result: ClassificationResult = chain.invoke([
-            SystemMessage(content=CLASSIFY_SYSTEM),
-            HumanMessage(content=CLASSIFY_USER.format(query=query)),
-        ])
+        result: ClassificationResult = invoke_with_retry(
+            chain,
+            [
+                SystemMessage(content=CLASSIFY_SYSTEM),
+                HumanMessage(content=CLASSIFY_USER.format(query=query)),
+            ],
+            node="classify_intent",
+        )
         logger.info(f"[classify_intent] → {result.query_type} (conf={result.confidence})")
  
     except Exception as e:
@@ -203,7 +207,7 @@ def generate_sql_node(state: AgentState) -> dict:
     """
     Генерирует SQL-скрипт по запросу пользователя.
     """
-    from llm.llm import get_llm
+    from llm.llm import get_llm, invoke_with_retry
     from llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER, build_schema_context
  
     query = state["user_query"]
@@ -220,13 +224,17 @@ def generate_sql_node(state: AgentState) -> dict:
  
     try:
         chain = get_llm("large").with_structured_output(GeneratedSQL)
-        generated: GeneratedSQL = chain.invoke([
-            SystemMessage(content=GENERATE_SQL_SYSTEM),
-            HumanMessage(content=GENERATE_SQL_USER.format(
-                query=query,
-                schema_context=schema_context,
-            )),
-        ])
+        generated: GeneratedSQL = invoke_with_retry(
+            chain,
+            [
+                SystemMessage(content=GENERATE_SQL_SYSTEM),
+                HumanMessage(content=GENERATE_SQL_USER.format(
+                    query=query,
+                    schema_context=schema_context,
+                )),
+            ],
+            node="generate_sql",
+        )
         result = SQLGenerationResult(
             status=ToolStatus.SUCCESS, tool_name="generate_sql", generated=generated,
         )
@@ -294,7 +302,7 @@ def fix_sql_node(state: AgentState) -> dict:
     Запускается только когда execute_query_node вернул статус ERROR
     и лимит попыток не исчерпан.
     """
-    from llm.llm import get_llm
+    from llm.llm import get_llm, invoke_with_retry
     from llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER, build_schema_context
 
     query          = state["user_query"]
@@ -322,15 +330,19 @@ def fix_sql_node(state: AgentState) -> dict:
 
     try:
         chain = get_llm("large").with_structured_output(GeneratedSQL)
-        fixed: GeneratedSQL = chain.invoke([
-            SystemMessage(content=FIX_SQL_SYSTEM),
-            HumanMessage(content=FIX_SQL_USER.format(
-                query=query,
-                schema_context=schema_context,
-                failed_sql=failed_sql,
-                error_msg=error_msg,
-            )),
-        ])
+        fixed: GeneratedSQL = invoke_with_retry(
+            chain,
+            [
+                SystemMessage(content=FIX_SQL_SYSTEM),
+                HumanMessage(content=FIX_SQL_USER.format(
+                    query=query,
+                    schema_context=schema_context,
+                    failed_sql=failed_sql,
+                    error_msg=error_msg,
+                )),
+            ],
+            node="fix_sql",
+        )
         result = SQLGenerationResult(
             status=ToolStatus.SUCCESS, tool_name="fix_sql", generated=fixed,
         )
@@ -418,7 +430,7 @@ def format_response_node(state: AgentState) -> dict:
     Формирует финальный ответ через малую LLM.
     Fallback — собирает ответ из контекста без LLM.
     """
-    from llm.llm import get_llm
+    from llm.llm import get_llm, invoke_with_retry
     from llm.prompts import get_format_system, FORMAT_USER, build_results_context
 
     query          = state.get("user_query", "")
@@ -428,14 +440,18 @@ def format_response_node(state: AgentState) -> dict:
     logger.info(f"[format_response] тип={query_type}")
 
     try:
-        response = get_llm("small").invoke([
-            SystemMessage(content=get_format_system(query_type)),   # ← тип-специфичный промпт
-            HumanMessage(content=FORMAT_USER.format(
-                query=query,
-                query_type=str(query_type),                          # ← передаём тип в контекст
-                results_context=build_results_context(state),
-            )),
-        ])
+        response = invoke_with_retry(
+            get_llm("small"),
+            [
+                SystemMessage(content=get_format_system(query_type)),   # ← тип-специфичный промпт
+                HumanMessage(content=FORMAT_USER.format(
+                    query=query,
+                    query_type=str(query_type),                          # ← передаём тип в контекст
+                    results_context=build_results_context(state),
+                )),
+            ],
+            node="format_response",
+        )
         answer = response.content.strip()
     except Exception as e:
         logger.error(f"[format_response] LLM error: {e}")
