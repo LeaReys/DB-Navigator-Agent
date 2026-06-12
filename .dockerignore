@@ -1,0 +1,28 @@
+# Секреты и локальное окружение
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Git / IDE / OS
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Артефакты, не нужные в образе
+demo/DB_description.xlsx
+benchmark/results/
+
+# ВАЖНО: chroma_db/ НЕ игнорируем — это готовый RAG-индекс,
+# он копируется в образ.
