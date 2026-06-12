@@ -192,12 +192,12 @@ def run_benchmark(
     Запускает benchmark и возвращает (results, metrics).
     Может использоваться программно из app.py или тестов.
     """
-    from agent.graph import build_graph, run_traced
-    from agent.state import AgentState
+    from core.agent.graph import build_graph, run_traced
+    from core.agent.state import AgentState
     from benchmark.evaluator import evaluate, CaseResult
     from benchmark import metrics as metrics_module
-    from config import settings
-    from observability.tracer import is_enabled as lf_enabled
+    from core.config import settings
+    from core.observability.tracer import is_enabled as lf_enabled
 
     cases      = load_cases(category=category, case_id=case_id)
     graph      = build_graph()
@@ -261,7 +261,7 @@ def run_benchmark(
     print_metrics(m)
 
     # = Сохранение ================================
-    from config import settings as cfg
+    from core.config import settings as cfg
     run_meta = {
         "timestamp":    datetime.now().isoformat(),
         "session_id":   session_id,

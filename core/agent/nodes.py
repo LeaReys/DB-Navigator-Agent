@@ -8,8 +8,8 @@ import logging
  
 from langchain_core.messages import HumanMessage, SystemMessage
  
-from agent.state import AgentState
-from schemas.models import (
+from core.agent.state import AgentState
+from core.schemas.models import (
     QueryType,
     ClassificationResult,
     ToolStatus,
@@ -20,10 +20,10 @@ from schemas.models import (
     AgentResponse,
     SourceReference,
 )
-from tools.metadata_search import search_metadata
-from tools.schema_tool import get_table_schema
-from tools.sql_tool import execute_query
-from config import settings
+from core.tools.metadata_search import search_metadata
+from core.tools.schema_tool import get_table_schema
+from core.tools.sql_tool import execute_query
+from core.config import settings
  
 logger = logging.getLogger(__name__)
 
@@ -71,8 +71,8 @@ def classify_intent(state: AgentState) -> dict:
     Классифицирует запрос через structured output малой LLM.
     При ошибке LLM — не роняем агента, возвращаем UNKNOWN.
     """
-    from llm.llm import get_llm, invoke_with_retry
-    from llm.prompts import CLASSIFY_SYSTEM, CLASSIFY_USER
+    from core.llm.llm import get_llm, invoke_with_retry
+    from core.llm.prompts import CLASSIFY_SYSTEM, CLASSIFY_USER
  
     query = state["user_query"]
     logger.info(f"[classify_intent] '{query}'")
@@ -207,8 +207,8 @@ def generate_sql_node(state: AgentState) -> dict:
     """
     Генерирует SQL-скрипт по запросу пользователя.
     """
-    from llm.llm import get_llm, invoke_with_retry
-    from llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER, build_schema_context
+    from core.llm.llm import get_llm, invoke_with_retry
+    from core.llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER, build_schema_context
  
     query = state["user_query"]
     logger.info(f"[generate_sql] '{query}'")
@@ -302,8 +302,8 @@ def fix_sql_node(state: AgentState) -> dict:
     Запускается только когда execute_query_node вернул статус ERROR
     и лимит попыток не исчерпан.
     """
-    from llm.llm import get_llm, invoke_with_retry
-    from llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER, build_schema_context
+    from core.llm.llm import get_llm, invoke_with_retry
+    from core.llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER, build_schema_context
 
     query          = state["user_query"]
     sql_result     = state.get("sql_result")
@@ -430,8 +430,8 @@ def format_response_node(state: AgentState) -> dict:
     Формирует финальный ответ через малую LLM.
     Fallback — собирает ответ из контекста без LLM.
     """
-    from llm.llm import get_llm, invoke_with_retry
-    from llm.prompts import get_format_system, FORMAT_USER, build_results_context
+    from core.llm.llm import get_llm, invoke_with_retry
+    from core.llm.prompts import get_format_system, FORMAT_USER, build_results_context
 
     query          = state.get("user_query", "")
     classification = state.get("classification")

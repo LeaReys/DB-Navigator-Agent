@@ -21,3 +21,7 @@ pyodbc>=5.0.0                 # подключение к MS SQL Server
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
+
+# === API / Веб-интерфейс ===
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0

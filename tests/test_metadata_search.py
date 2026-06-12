@@ -3,7 +3,7 @@
 Чистые функции, без БД.
 """
 
-from tools.metadata_search import _extract_keywords, _escape_like
+from core.tools.metadata_search import _extract_keywords, _escape_like
 
 
 def test_extract_drops_stopwords_and_short_tokens():

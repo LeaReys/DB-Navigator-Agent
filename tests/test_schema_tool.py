@@ -3,7 +3,7 @@
 Чистая функция, без БД.
 """
 
-from tools.schema_tool import _format_type
+from core.tools.schema_tool import _format_type
 
 
 def test_varchar_with_length():
