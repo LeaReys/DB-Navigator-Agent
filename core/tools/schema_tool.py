@@ -2,10 +2,10 @@
 Инструмент получения структуры таблицы.
 
 Запрашивает метаданные из системных таблиц MS SQL:
-  sys.columns      — колонки и их типы
-  sys.indexes      — первичные ключи
-  sys.foreign_keys — внешние ключи
-  sys.dm_db_partition_stats — приблизительный счётчик строк
+  sys.columns      - колонки и их типы
+  sys.indexes      - первичные ключи
+  sys.foreign_keys - внешние ключи
+  sys.dm_db_partition_stats - приблизительный счётчик строк
 """
 
 from __future__ import annotations
