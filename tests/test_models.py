@@ -6,7 +6,7 @@
 import pytest
 from pydantic import ValidationError
 
-from schemas.models import GeneratedSQL
+from core.schemas.models import GeneratedSQL
 
 
 def test_select_is_allowed():

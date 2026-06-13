@@ -20,7 +20,7 @@ from typing import Literal, Any
 
 from langchain_core.language_models import BaseChatModel
 
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

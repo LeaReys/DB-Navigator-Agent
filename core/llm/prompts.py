@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from schemas.models import ToolStatus
+from core.schemas.models import ToolStatus
 
 
 # =============================================================
