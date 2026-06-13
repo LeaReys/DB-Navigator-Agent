@@ -13,15 +13,19 @@ WORKDIR /app
 # --- Системные зависимости: ODBC Driver 17 для MS SQL Server -------------
 # Driver 17 выбран намеренно: по умолчанию не требует TLS-сертификата,
 # поэтому подключение к demo-серверу работает «из коробки».
+#
+# Ключ кладём в /usr/share/keyrings/ и явно ссылаемся через signed-by —
+# это требование нового apt (Debian 12+) с sqv-верификатором.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl gnupg ca-certificates apt-transport-https gcc g++ \
+        curl gnupg ca-certificates gcc g++ \
  && curl -sSL https://packages.microsoft.com/keys/microsoft.asc \
-        | gpg --dearmor > /etc/apt/trusted.gpg.d/microsoft.gpg \
- && curl -sSL https://packages.microsoft.com/config/debian/12/prod.list \
+        | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+ && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] \
+https://packages.microsoft.com/debian/12/prod bookworm main" \
         > /etc/apt/sources.list.d/mssql-release.list \
  && apt-get update \
  && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 unixodbc-dev \
- && apt-get purge -y --auto-remove gnupg apt-transport-https \
+ && apt-get purge -y --auto-remove gnupg \
  && rm -rf /var/lib/apt/lists/*
 
 # --- Python-зависимости (отдельный слой ради кеша сборки) ---------------

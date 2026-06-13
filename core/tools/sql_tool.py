@@ -5,7 +5,7 @@
 Защитные слои:
   1. Pydantic-валидатор в GeneratedSQL (при генерации)
   2. DBConnector._check_query_safety (при передаче в коннектор)
-  3. _inject_top_limit в этом файле — добавляем TOP N если его нет
+  3. _inject_top_limit в этом файле - добавляем TOP N если его нет
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def execute_query(
         server_alias: псевдоним сервера из конфига
         database:     имя базы данных
         sql:          SQL-запрос (только SELECT)
-        params:       параметры подстановки (?, ?, ...) — защита от инъекций
+        params:       параметры подстановки (?, ?, ...) - защита от инъекций
         max_rows:     лимит строк в ответе
     
     Returns:
@@ -119,7 +119,7 @@ def _inject_top_limit(sql: str, limit: int) -> tuple[str, bool]:
     existing_top = match.group(2)
 
     if existing_top:
-        # TOP уже есть — проверяем что не превышает лимит
+        # TOP уже есть - проверяем что не превышает лимит
         existing_n = int(re.search(r"\d+", existing_top).group())
         if existing_n <= limit:
             return sql, False
@@ -132,7 +132,7 @@ def _inject_top_limit(sql: str, limit: int) -> tuple[str, bool]:
         logger.debug(f"TOP снижен с {existing_n} до {limit}")
         return new_sql, True
 
-    # TOP отсутствует — добавляем
+    # TOP отсутствует - добавляем
     new_sql = pattern.sub(
         lambda m: m.group(1) + f"TOP {limit} ",
         sql,
