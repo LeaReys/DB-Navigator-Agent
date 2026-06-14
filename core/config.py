@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     use_ollama: bool = Field(default=False, validation_alias="USE_OLLAMA")
 
     # Макс. кол-во токенов в ответе от LLM — важно для контроля затрат и предотвращения слишком длинных ответов.
-    llm_max_tokens: int = Field(default=2048, validation_alias="LLM_MAX_TOKENS")
+    llm_max_tokens: int = Field(default=5000, validation_alias="LLM_MAX_TOKENS")
     
     # LLM retry при 429
     llm_retry_max_attempts: int   = Field(default=3,   validation_alias="LLM_RETRY_MAX_ATTEMPTS")
