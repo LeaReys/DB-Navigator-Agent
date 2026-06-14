@@ -41,7 +41,13 @@ def get_handler(
         from langfuse import get_client
 
         get_client()
-        handler = CallbackHandler()
+        handler = CallbackHandler(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_host,
+            session_id=session_id,
+            tags=tags or [],
+        )
         logger.info(f"LangFuse handler создан (session={session_id[:8]}...)")
         return handler
 
