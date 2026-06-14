@@ -136,7 +136,7 @@ def build_graph() -> StateGraph:
     graph.add_node("get_schema",         get_schema_node)
     graph.add_node("generate_sql",       generate_sql_node)
     graph.add_node("execute_query",      execute_query_node)
-    graph.add_node("fix_sql",            fix_sql_node)        # новый узел
+    graph.add_node("fix_sql",            fix_sql_node)
     graph.add_node("format_response",    format_response_node)
     graph.add_node("handle_unknown",     handle_unknown_node)
     graph.add_node("unsafe_query",       unsafe_query_node)
@@ -178,7 +178,7 @@ def build_graph() -> StateGraph:
         source="execute_query",
         path=route_after_execute,
         path_map={
-            "fix_sql":        "fix_sql",
+            "fix_sql":         "fix_sql",
             "format_response": "format_response",
         },
     )
@@ -196,7 +196,7 @@ def build_graph() -> StateGraph:
 
 
 # ===============================
-# Запуск с LangFuse трейсингом (основной в production)
+# Запуск с LangFuse трейсингом
 # ===============================
 
 def run_traced(
