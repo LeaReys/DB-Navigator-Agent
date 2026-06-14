@@ -173,13 +173,6 @@ class DBConnector:
         Raises:
             UnsafeQueryError: если запрос содержит мутирующие операторы
             ConnectorError:   при ошибке подключения или выполнения
-        
-        Пример:
-            rows = connector.execute(
-                "prod", "BankingDB",
-                "SELECT * FROM debt WHERE debtor_id = ?",
-                params=(123,),
-            )
         """
         self._check_query_safety(sql)
 
