@@ -3,7 +3,7 @@
 Тестируется чистая функция, без подключения к БД.
 """
 
-from tools.sql_tool import _inject_top_limit
+from core.tools.sql_tool import _inject_top_limit
 
 
 def test_adds_top_when_missing():

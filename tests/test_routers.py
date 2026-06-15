@@ -7,7 +7,7 @@
 
 import pytest
 
-from schemas.models import (
+from core.schemas.models import (
     QueryType,
     ClassificationResult,
     ToolStatus,
@@ -15,7 +15,7 @@ from schemas.models import (
     GeneratedSQL,
     ExecuteQueryResult,
 )
-from agent.graph import (
+from core.agent.graph import (
     route_by_query_type,
     route_after_sql_generation,
     route_after_execute,

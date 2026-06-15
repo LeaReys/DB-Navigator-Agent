@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from schemas.models import ToolStatus
+from core.schemas.models import ToolStatus
 
 
 # =============================================================
@@ -188,8 +188,7 @@ def get_format_system(query_type) -> str:
     Возвращает системный промпт для форматирования ответа.
 
     Состоит из общей базы и короткого блока правил,
-    специфичных для типа запроса. Меньше инструкций «обо всём» —
-    точнее следует малая модель.
+    специфичных для типа запроса.
 
     Args:
         query_type: QueryType enum или строка ("navigation", "schema", …)

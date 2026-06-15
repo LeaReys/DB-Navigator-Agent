@@ -1,0 +1,81 @@
+# =========================================================
+# DB Navigator Agent — полный запуск проекта одной командой.
+#
+#   1) cp .env.example .env  — вписать OPENROUTER_API_KEY и
+#      поменять DB_SERVER_1_HOST=mssql, DB_SERVER_1_PORT=1433
+#   2) docker compose up --build
+#   3) открыть http://localhost:8000
+#
+# Поднимаются три сервиса:
+#   mssql    — MS SQL Server 2022 с demo-БД
+#   init-db  — разовая заливка demo/init.sql (схема + данные + read-only логин)
+#   app      — FastAPI + LangGraph-агент + чат-интерфейс
+# =========================================================
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: dbnav-mssql
+    hostname: dbnav-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: "Demo_Strong_Password_123!"
+    ports:
+      - "14333:1433"          # наружу — для SSMS/azure-data-studio при желании
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  init-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: dbnav-init
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: "Demo_Strong_Password_123!"
+    volumes:
+      - ./demo/init.sql:/scripts/init.sql:ro
+    command: >
+      bash -c "/opt/mssql-tools18/bin/sqlcmd
+      -S mssql -U sa -P \"$$MSSQL_SA_PASSWORD\" -C
+      -i /scripts/init.sql"
+    restart: "no"
+
+  app:
+    build: .
+    container_name: dbnav-app
+    depends_on:
+      mssql:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+    environment:
+      # --- LLM (OpenRouter). Ключ задаётся в .env рядом с этим файлом ---
+      USE_OLLAMA: "false"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:?Впишите OPENROUTER_API_KEY в файл .env}"
+      OPENROUTER_MODEL_SMALL: "${OPENROUTER_MODEL_SMALL:-mistralai/mistral-7b-instruct:free}"
+      OPENROUTER_MODEL_LARGE: "${OPENROUTER_MODEL_LARGE:-deepseek/deepseek-coder-v2-instruct:free}"
+
+      # --- demo-БД внутри compose-сети (read-only логин из init.sql) ---
+      DB_SERVER_1_ALIAS: "demo"
+      DB_SERVER_1_HOST: "mssql"
+      DB_SERVER_1_PORT: "1433"
+      DB_SERVER_1_USERNAME: "agent_reader"
+      DB_SERVER_1_PASSWORD: "Agent_ReadOnly_123!"
+      DB_SERVER_1_DATABASES: "db_proglib"
+
+      # --- LangFuse (опционально, cloud). Пусто → трейсинг выключен ---
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-}"
+      LANGFUSE_HOST: "${LANGFUSE_HOST:-https://cloud.langfuse.com}"
+    ports:
+      - "8000:8000"
+
+volumes:
+  mssql_data:

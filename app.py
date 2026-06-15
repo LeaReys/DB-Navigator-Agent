@@ -121,7 +121,7 @@ def print_result(state: dict, elapsed: float) -> None:
 
 def _run_query(graph, query: str, session_id: str, tags: list[str]) -> None:
     """Выполняет один запрос через граф и печатает результат."""
-    from agent.graph import run_traced
+    from core.agent.graph import run_traced
 
     print(f"\n{C.BOLD}{C.CYAN}{'='*60}{C.RESET}\n{C.BOLD}ЗАПРОС: {query}{C.RESET}")
     t0 = time.perf_counter()
@@ -139,16 +139,13 @@ def _run_query(graph, query: str, session_id: str, tags: list[str]) -> None:
 # =============================================================
 
 def run_repl() -> None:
-    from agent.graph import build_graph
-    from config import settings
-    from observability.tracer import is_enabled
+    from core.agent.graph import build_graph
+    from core.config import settings
+    from core.observability.tracer import is_enabled
 
     graph      = build_graph()
     session_id = str(uuid.uuid4())
 
-    print(_c(C.BOLD, "\n╔══════════════════════════════════════════╗"))
-    print(_c(C.BOLD,   "║     DB Navigator = интерактивный режим   ║"))
-    print(_c(C.BOLD,   "╚══════════════════════════════════════════╝"))
     print(
         f"  Провайдер : {_c(C.GREEN, settings.active_provider)}"
         f"  |  {_c(C.DIM, settings.model_small)} / {_c(C.DIM, settings.model_large)}"
@@ -178,7 +175,7 @@ def run_repl() -> None:
 # =============================================================
 
 def run_single(query: str) -> None:
-    from agent.graph import build_graph
+    from core.agent.graph import build_graph
 
     graph      = build_graph()
     session_id = str(uuid.uuid4())
@@ -199,14 +196,12 @@ def run_bench(category: str | None = None, verbose: bool = False) -> None:
 # =============================================================
 
 def run_check() -> None:
-    from config import settings
-    from llm.llm import check_provider
-    from observability.tracer import check_langfuse
+    from core.config import settings
+    from core.llm.llm import check_provider
+    from core.observability.tracer import check_langfuse
 
-    print(_c(C.BOLD, "\n╔══════════════════════════════════════════╗"))
-    print(_c(C.BOLD,   "║         DB Navigator = health check      ║"))
-    print(_c(C.BOLD,   "╚══════════════════════════════════════════╝\n"))
-
+    print(_c(C.BOLD, "DB Navigator = health check\n"))
+    
     # = LLM ==========================================
     print(f"  {_c(C.BOLD, 'LLM')}  {settings.active_provider}")
     print(f"    Малая модель  : {settings.model_small}")
@@ -222,7 +217,7 @@ def run_check() -> None:
         print(f"    {_c(C.CYAN, server.alias)}  {server.host}:{server.port}  →  {dbs}")
         print("    Подключение...", end=" ", flush=True)
         try:
-            from db.connector import connector
+            from core.db.connector import connector
             connector.execute(server.alias, server.databases[0].name, "SELECT 1 AS ok")
             print(_c(C.GREEN, "✓ OK"))
         except Exception as e:
@@ -231,7 +226,7 @@ def run_check() -> None:
     # = RAG ===========================================
     print(f"\n  {_c(C.BOLD, 'RAG индекс')}")
     try:
-        from rag.retriever import get_retriever
+        from core.rag.retriever import get_retriever
         r = get_retriever()
         if r.is_ready():
             print(f"    {_c(C.GREEN, '✓')} Индекс готов")

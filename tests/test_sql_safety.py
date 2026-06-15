@@ -3,7 +3,7 @@
 Чистый stdlib, без БД и LLM.
 """
 
-from schemas.sql_safety import find_mutations, MUTATION_PATTERN
+from core.schemas.sql_safety import find_mutations, MUTATION_PATTERN
 
 
 def test_safe_select_has_no_mutations():

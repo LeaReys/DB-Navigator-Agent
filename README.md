@@ -8,7 +8,7 @@
 
 ## 2. Пользователь
 
-Основной пользователь — backend-разработчик, которому часто нужно быстро понять:
+Основной пользователь - backend-разработчик, которому часто нужно быстро понять:
  
 - где хранится нужная бизнес-информация;
 - какая структура у таблицы;
@@ -22,9 +22,39 @@
 - LangFuse (observability, трейсинг, метрики)
 
 ---
+
+## Быстрый старт через Docker
+
+Запуск проекта целиком - БД + агент + веб-интерфейс - без локальной установки Python и ODBC.
+
+**Требуется:** Docker + Docker Compose + ключ OpenRouter.
+
+```bash
+# 1. Задать ключ OpenRouter
+cp .env.docker.example .env
+#    впишите OPENROUTER_API_KEY в .env
+
+# 2. Поднять всё
+docker compose up --build
+
+# 3. Открыть интерфейс
+#    http://localhost:8000
+```
+
+Compose поднимает три сервиса:
+
+| Сервис | Назначение |
+|--------|-----------|
+| `mssql` | MS SQL Server 2022 с demo-базой `db_proglib` |
+| `init-db` | разовая заливка `demo/init.sql` - схема, синтетические данные и read-only логин `agent_reader` |
+| `app` | FastAPI + LangGraph-агент + чат-интерфейс на `:8000` |
+
+LangFuse подключается опционально: если в `.env` заданы ключи; если нет - агент работает без трейсинга.
+
+---
  
 ## 3. Архитектура агента
- 
+
 ### State
  
 Основные поля состояния (`agent/state.py`):
@@ -96,9 +126,9 @@ flowchart TD
 ```
  
 **Три ветвления:**
-1. **Роутер 1** — после `classify_intent`: 6 веток по типу запроса
-2. **Роутер 2** — после `generate_sql`: выполнять SQL или только вернуть скрипт
-3. **Роутер 3** — после `execute_query`: исправить SQL (`fix_sql`) или форматировать ответ. Цикл `fix_sql → execute_query` ограничен счётчиком `sql_retry_count` (до 2 попыток).
+1. **Роутер 1** - после `classify_intent`: 6 веток по типу запроса
+2. **Роутер 2** - после `generate_sql`: выполнять SQL или только вернуть скрипт
+3. **Роутер 3** - после `execute_query`: исправить SQL (`fix_sql`) или форматировать ответ. Цикл `fix_sql → execute_query` ограничен счётчиком `sql_retry_count` (до 2 попыток).
 ---
 
 ## 5. Edge cases
@@ -121,86 +151,23 @@ flowchart TD
 Агент работает хорошо, если:
  
 - правильно классифицирует тип запроса;
-- не выполняет unsafe SQL — никогда;
+- не выполняет unsafe SQL - никогда;
 - находит релевантные таблицы по бизнес-вопросу;
 - генерирует только read-only SQL;
 - объясняет ответ на русском языке;
 - проходит benchmark из тестовых кейсов с success rate ≥ 80%.
 
-**Метрики (считает `benchmark/metrics.py`, прогон — `python app.py --bench`):**
-- `success rate` (overall pass rate) — доля кейсов, где прошли все критерии;
-- `latency` — среднее и p90 (см. `p90_latency_s`); по категориям — в разбивке `by_category`;
-- `classification_accuracy`, `tool_call_accuracy`, `sql_safety_rate` — точность по типам проверок;
-- `cost per run` / расход токенов — доступны в дашборде LangFuse по трейсам прогонов.
+**Метрики (считает `benchmark/metrics.py`, прогон - `python app.py --bench`):**
+- `success rate` (overall pass rate) - доля кейсов, где прошли все критерии;
+- `latency` - среднее и p90 (см. `p90_latency_s`); по категориям - в разбивке `by_category`;
+- `classification_accuracy`, `tool_call_accuracy`, `sql_safety_rate` - точность по типам проверок;
+- `cost per run` / расход токенов - доступны в дашборде LangFuse по трейсам прогонов.
 
 Результаты каждого прогона сохраняются в `benchmark/results/run_*.json`.
 
 ---
  
-## 7. Быстрый старт
- 
-### Предварительные условия
- 
-- Python 3.11+
-- Docker (для demo-БД)
-- ODBC Driver 17 for SQL Server
-### 1. Установить зависимости
- 
-```bash
-pip install -r requirements.txt
-```
- 
-### 2. Настроить окружение
- 
-```bash
-cp .env.example .env
-# Заполните .env своими значениями:
-# - OPENROUTER_API_KEY или OLLAMA_HOST
-# - LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY (cloud.langfuse.com)
-# - DB_SERVER_1_* (параметры БД)
-```
- 
-### 3. Поднять demo-БД
- 
-```bash
-cd demo
-docker-compose up -d
-# Подождать ~30 сек пока MS SQL поднимется и init.sql применится
-```
- 
-### 4. Построить RAG-индекс
- 
-```bash
-python -m rag.indexer
-```
- 
-### 5. Проверить что всё работает
- 
-```bash
-python app.py --check
-# Должно показать ✓ OK для LLM, БД, RAG и LangFuse
-```
- 
-### 6. Запустить агента
- 
-```bash
-# Интерактивный режим (REPL)
-python app.py
- 
-# Одиночный запрос
-python app.py "Какая структура у таблицы debt?"
- 
-# Прогон benchmark (все 12 кейсов)
-python app.py --bench
- 
-# Только одна категория
-python app.py --bench navigation
- 
-# Справка
-python app.py --help
-```
- 
-### 7. Запустить тесты
+### 6. Запустить unit-тесты
  
 ```bash
 pip install -r requirements-dev.txt
@@ -211,6 +178,56 @@ pytest
 (БД/LLM/Chroma не нужны): три роутера графа, проверку SQL на мутации,
 авто-`TOP`, извлечение ключевых слов, форматирование типов и агрегацию метрик.
  
+---
+ 
+## Метрики последнего прогона
+
+### Общие метрики
+
+| Метрика | Значение |
+|---------|----------|
+| **Всего кейсов** | 12 |
+| **Успешных (pass)** | 11 |
+| **Провалено** | 1 |
+| **Ошибок выполнения** | 0 |
+| **Success Rate** | 91.7% |
+| **Avg Latency** | 0.8 s |
+| **P90 Latency** | 1.4 s |
+| **Всего времени** | 9.6 s |
+
+### По критериям (качество)
+
+| Критерий | Accuracy | Кейсов |
+|----------|----------|--------|
+| Правильная классификация | 100% | 12/12 |
+| Правильные инструменты | 91.7% | 11/12 |
+| Безопасность SQL | 100% | 12/12 |
+| Ожидаемые термины в ответе | 91.7% | 11/12 |
+
+### По категориям
+
+| Категория | Pass Rate | Кейсов | Avg Latency |
+|-----------|-----------|--------|-------------|
+| navigation | 100% | 3/3 | 0.5 s |
+| schema | 100% | 2/2 | 0.4 s |
+| script | 100% | 2/2 | 1.1 s |
+| data | 83% | 2/3 | 1.1 s |
+| unsafe | 100% | 2/2 | 0.3 s |
+| unknown | 100% | 1/1 | 0.2 s |
+
+### Как получить метрики
+
+```bash
+# Запустить benchmark и сохранить результаты
+python app.py --bench
+
+# Результаты сохраняются в benchmark/results/run_YYYYMMDD_HHMMSS.json
+```
+
+### Observability
+
+ Трейсы каждого прогона доступны в **LangFuse** (если ключи заданы в .env).
+
 ---
  
 ## 8. Структура проекта
@@ -244,12 +261,21 @@ db_navigator/
 │   ├── metrics.py          # Агрегация: pass rate, latency, by_category
 │   ├── runner.py           # CLI для запуска benchmark
 │   └── test_cases.json     # 12 тестовых запросов с критериями
+├── web/                    # Веб-слой над агентом (не содержит логики агента)
+│   ├── server.py           # FastAPI: SSE-чат, /api/health, отдача статики
+│   ├── events.py           # Перевод обновлений узлов графа в события для UI
+│   └── static/             # Чат-интерфейс (index.html / style.css / app.js)
 ├── demo/
-│   ├── docker-compose.yml  # MS SQL 2022 + автоматическая заливка init.sql
+│   ├── docker-compose.yml  # Только БД: MS SQL 2022 + заливка init.sql
 │   └── init.sql            # Синтетическая demo-БД (9 таблиц, домен взыскания)
+├── docker-compose.yml      # Весь проект: mssql + init-db + app (веб-агент)
+├── Dockerfile              # Образ агента: Python + ODBC Driver 17 + модель эмбеддингов
+├── .dockerignore           # chroma_db оставляем, .env и кеши исключаем
+├── .env.docker.example     # Шаблон .env для docker compose (нужен OPENROUTER_API_KEY)
 ├── config.py               # Все настройки через pydantic-settings + .env
-├── app.py                  # Точка входа: REPL / одиночный запрос / benchmark / check
-├── requirements.txt        # Зависимости
+├── app.py                  # Точка входа CLI: REPL / запрос / benchmark / check
+├── requirements.txt        # Зависимости агента
+├── requirements-web.txt    # Зависимости веб-слоя (FastAPI + uvicorn)
 └── .env.example            # Шаблон переменных окружения
 ```
 
@@ -264,7 +290,7 @@ db_navigator/
 
 - [x] подключение OpenRouter/Ollama;
 - [x] RAG по схеме БД (по sys-таблицам из MS Server);
-- [ ] (?) дополнение RAG по документам описания БД (а не только по sys-таблицам);
+- [x] (?) дополнение RAG по документам описания БД (а не только по sys-таблицам);
 - [x] реальный `pyodbc` metadata tool;
 - [x] read-only SQL  через SQL Server с ограниченными правами;
 - [ ] (?) HITL - уточняющие вопросы у пользователя;
@@ -272,7 +298,9 @@ db_navigator/
 - [x] LangFuse;
 - [x] benchmark и evals;
 - [ ] security-checklist;
-- [ ] улучшенная проверка SQL-запроса;
-- [ ] Allowlist таблиц;
-- [ ] доработка промптов, выбор оптимальных моделей
-- [ ] LLM-as-judge 
+- [x] улучшенная проверка SQL-запроса;
+- [ ] Allowlist таблиц и БД;
+- [x] доработка промптов, выбор оптимальных моделей
+- [ ] LLM-as-judge
+- [ ] (?) Обработка вывода исключений.
+- [ ] Продолжение диалога(сохранение контекста)

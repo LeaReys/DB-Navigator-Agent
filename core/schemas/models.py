@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
-from schemas.sql_safety import find_mutations
+from core.schemas.sql_safety import find_mutations
 
 
 # =============================================

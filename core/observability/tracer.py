@@ -18,7 +18,7 @@ def is_enabled() -> bool:
     True если оба LangFuse ключа заданы в .env.
     Если False — агент работает нормально, просто без трейсинга.
     """
-    from config import settings
+    from core.config import settings
     return bool(settings.langfuse_public_key and settings.langfuse_secret_key)
 
 
@@ -37,11 +37,17 @@ def get_handler(
 
     try:
         from langfuse.langchain import CallbackHandler
-        from config import settings
+        from core.config import settings
         from langfuse import get_client
 
         get_client()
-        handler = CallbackHandler()
+        handler = CallbackHandler(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_host,
+            session_id=session_id,
+            tags=tags or [],
+        )
         logger.info(f"LangFuse handler создан (session={session_id[:8]}...)")
         return handler
 
@@ -89,7 +95,7 @@ def check_langfuse() -> dict:
 
     try:
         from langfuse import Langfuse
-        from config import settings
+        from core.config import settings
 
         result["enabled"] = True
         result["host"]    = settings.langfuse_host
