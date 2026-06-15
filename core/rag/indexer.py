@@ -27,6 +27,9 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 from core.db.connector import connector, ConnectorError
 from core.config import settings, ServerConfig, DatabaseConfig
 
+from dotenv import load_dotenv
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 # Название коллекции в ChromaDB
