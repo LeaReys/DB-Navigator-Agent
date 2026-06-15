@@ -234,49 +234,50 @@ python app.py --bench
  
 ```
 db_navigator/
-├── agent/
-│   ├── graph.py            # LangGraph граф (build_graph, run_traced, 3 роутера)
-│   ├── nodes.py            # Логика каждого узла (включая fix_sql retry)
-│   └── state.py            # AgentState (TypedDict + Pydantic-модели)
-├── observability/
-│   ├── __init__.py
-│   └── tracer.py           # LangFuse интеграция (трейсинг, метрики)
-├── tools/
-│   ├── metadata_search.py  # RAG + SQL fallback
-│   ├── schema_tool.py      # get_table_schema из sys.columns
-│   └── sql_tool.py         # execute_query через pyodbc
-├── rag/
-│   ├── indexer.py          # Индексация схемы БД в ChromaDB
-│   └── retriever.py        # Семантический поиск по индексу
-├── llm/
-│   ├── llm.py              # Обёртка над OpenRouter / Ollama
-│   └── prompts.py          # Шаблоны промптов для всех LLM-узлов
-├── db/
-│   └── connector.py        # pyodbc-менеджер (пул соединений, read-only guard)
-├── schemas/
-│   ├── models.py           # Pydantic-модели для всех выходов агента
-│   └── sql_safety.py       # Общий паттерн проверки SQL на мутации
+├── api/
+│   ├── server.py                # FastAPI: SSE-чат, /api/health, отдача статики
+│   ├── events.py                # Перевод обновлений узлов графа в события для UI
+│   └── static/                  # Чат-интерфейс (index.html / style.css / app.js)
 ├── benchmark/
-│   ├── evaluator.py        # Критерии оценки каждого кейса
-│   ├── metrics.py          # Агрегация: pass rate, latency, by_category
-│   ├── runner.py           # CLI для запуска benchmark
-│   └── test_cases.json     # 12 тестовых запросов с критериями
-├── web/                    # Веб-слой над агентом (не содержит логики агента)
-│   ├── server.py           # FastAPI: SSE-чат, /api/health, отдача статики
-│   ├── events.py           # Перевод обновлений узлов графа в события для UI
-│   └── static/             # Чат-интерфейс (index.html / style.css / app.js)
+│   ├── evaluator.py             # Критерии оценки каждого кейса
+│   ├── metrics.py               # Агрегация: pass rate, latency, by_category
+│   ├── runner.py                # CLI для запуска benchmark
+│   └── test_cases.json          # 17 тестовых запросов с критериями
+├── core/
+│   ├── agent/
+│   │   ├── graph.py             # LangGraph граф (build_graph, run_traced, 3 роутера)
+│   │   ├── nodes.py             # Логика каждого узла (включая fix_sql retry)
+│   │   └── state.py             # AgentState (TypedDict + Pydantic-модели)
+│   ├── observability/
+│   │   ├── __init__.py
+│   │   └── tracer.py            # LangFuse интеграция (трейсинг, метрики)
+│   ├── tools/
+│   │   ├── metadata_search.py   # RAG + SQL fallback
+│   │   ├── schema_tool.py       # get_table_schema из sys.columns
+│   │   └── sql_tool.py          # execute_query через pyodbc
+│   ├── rag/
+│   │   ├── indexer.py           # Индексация схемы БД в ChromaDB
+│   │   └── retriever.py         # Семантический поиск по индексу
+│   ├── llm/
+│   │   ├── llm.py               # Обёртка над OpenRouter / Ollama
+│   │   └── prompts.py           # Шаблоны промптов для всех LLM-узлов
+│   ├── db/
+│   │   └── connector.py         # pyodbc-менеджер (пул соединений, read-only guard)
+│   ├── schemas/
+│   │   ├── models.py            # Pydantic-модели для всех выходов агента
+│   │   └── sql_safety.py        # Общий паттерн проверки SQL на мутации
+│   ├── config.py                # Все настройки через pydantic-settings + .env
 ├── demo/
-│   ├── docker-compose.yml  # Только БД: MS SQL 2022 + заливка init.sql
-│   └── init.sql            # Синтетическая demo-БД (9 таблиц, домен взыскания)
-├── docker-compose.yml      # Весь проект: mssql + init-db + app (веб-агент)
-├── Dockerfile              # Образ агента: Python + ODBC Driver 17 + модель эмбеддингов
-├── .dockerignore           # chroma_db оставляем, .env и кеши исключаем
-├── .env.docker.example     # Шаблон .env для docker compose (нужен OPENROUTER_API_KEY)
-├── config.py               # Все настройки через pydantic-settings + .env
-├── app.py                  # Точка входа CLI: REPL / запрос / benchmark / check
-├── requirements.txt        # Зависимости агента
-├── requirements-web.txt    # Зависимости веб-слоя (FastAPI + uvicorn)
-└── .env.example            # Шаблон переменных окружения
+│   ├── docker-compose.yml       # Только БД: MS SQL 2022 + заливка init.sql
+│   └── init.sql                 # Синтетическая demo-БД (9 таблиц, домен взыскания)
+├── docker-compose.yml           # Весь проект: mssql + init-db + app (веб-агент)
+├── Dockerfile                   # Образ агента: Python + ODBC Driver 17 + модель эмбеддингов
+├── .dockerignore                # chroma_db оставляем, .env и кеши исключаем
+├── .env.docker.example          # Шаблон .env для docker compose (нужен OPENROUTER_API_KEY)
+├── app.py                       # Точка входа CLI: REPL / запрос / benchmark / check
+├── requirements.txt             # Зависимости агента
+├── requirements-web.txt         # Зависимости веб-слоя (FastAPI + uvicorn)
+└── .env.example                 # Шаблон переменных окружения
 ```
 
 ---
