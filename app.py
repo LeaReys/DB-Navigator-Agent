@@ -146,9 +146,6 @@ def run_repl() -> None:
     graph      = build_graph()
     session_id = str(uuid.uuid4())
 
-    print(_c(C.BOLD, "\n╔══════════════════════════════════════════╗"))
-    print(_c(C.BOLD,   "║     DB Navigator = интерактивный режим   ║"))
-    print(_c(C.BOLD,   "╚══════════════════════════════════════════╝"))
     print(
         f"  Провайдер : {_c(C.GREEN, settings.active_provider)}"
         f"  |  {_c(C.DIM, settings.model_small)} / {_c(C.DIM, settings.model_large)}"
@@ -203,10 +200,8 @@ def run_check() -> None:
     from core.llm.llm import check_provider
     from core.observability.tracer import check_langfuse
 
-    print(_c(C.BOLD, "\n╔══════════════════════════════════════════╗"))
-    print(_c(C.BOLD,   "║         DB Navigator = health check      ║"))
-    print(_c(C.BOLD,   "╚══════════════════════════════════════════╝\n"))
-
+    print(_c(C.BOLD, "DB Navigator = health check\n"))
+    
     # = LLM ==========================================
     print(f"  {_c(C.BOLD, 'LLM')}  {settings.active_provider}")
     print(f"    Малая модель  : {settings.model_small}")

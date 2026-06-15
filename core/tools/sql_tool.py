@@ -38,13 +38,6 @@ def execute_query(
     """
     Выполняет SELECT-запрос и возвращает результат.
     
-    Args:
-        server_alias: псевдоним сервера из конфига
-        database:     имя базы данных
-        sql:          SQL-запрос (только SELECT)
-        params:       параметры подстановки (?, ?, ...) - защита от инъекций
-        max_rows:     лимит строк в ответе
-    
     Returns:
         ExecuteQueryResult с данными или описанием ошибки
     """

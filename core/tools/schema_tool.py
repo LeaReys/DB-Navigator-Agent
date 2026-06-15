@@ -105,11 +105,6 @@ def get_table_schema(
     """
     Возвращает полную структуру таблицы из MS SQL.
     
-    Args:
-        server_alias: псевдоним сервера из конфига
-        database:     имя базы данных
-        table:        имя таблицы (без схемы, ищем в dbo)
-    
     Returns:
         TableSchemaResult с полным списком колонок
     """

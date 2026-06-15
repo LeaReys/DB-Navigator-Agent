@@ -3,7 +3,6 @@
 
 Fallback: если индекс не построен (retriever не готов) —
   автоматически возвращаемся к SQL LIKE поиску.
-  Это важно для первого запуска, когда индекс ещё не создан.
 """
 
 from __future__ import annotations
@@ -21,17 +20,13 @@ logger = logging.getLogger(__name__)
 
 def search_metadata(
     query: str,
-    top_k: int | None = None,
+    top_k: int | None = None,   # по умолчанию из settings.rag_top_k
 ) -> MetadataSearchResult:
     """
     Ищет релевантные таблицы и колонки по запросу пользователя.
 
     Использует ChromaDB.
     При недоступном индексе — fallback на SQL LIKE поиск.
-
-    Args:
-        query: запрос на естественном языке
-        top_k: максимум результатов (по умолчанию из settings.rag_top_k)
 
     Returns:
         MetadataSearchResult со списком найденных таблиц

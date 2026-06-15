@@ -2,8 +2,8 @@
 Унифицированная обёртка над LLM провайдерами.
 
 Поддерживаемые провайдеры:
-  - OpenRouter (ChatOpenAI с кастомным base_url) — для prod/облака
-  - Ollama (ChatOllama) — для локальной разработки без интернета
+  - OpenRouter (ChatOpenAI с кастомным base_url) - для prod/облака
+  - Ollama (ChatOllama) - для локальной разработки без интернета
 
 Переключение через .env:
   USE_OLLAMA=false  → OpenRouter  (по умолчанию)
@@ -41,7 +41,7 @@ def _extract_retry_after(exc: Exception) -> float | None:
 
 
 def _is_rate_limit(exc: Exception) -> bool:
-    """True если исключение — 429 Rate Limit от провайдера."""
+    """True если исключение - 429 Rate Limit от провайдера."""
     text = str(exc).lower()
     return (
         "429" in text
@@ -57,7 +57,7 @@ def invoke_with_retry(chain: Any, messages: list, node: str = "") -> Any:
 
     Стратегия:
       1. Пробуем вызов.
-      2. Если 429 — смотрим Retry-After в теле ответа; если нет — экспоненциальный backoff.
+      2. Если 429 - смотрим Retry-After в теле ответа; если нет - экспоненциальный backoff.
       3. После _RETRY_MAX_ATTEMPTS неудачных попыток пробрасываем исключение наверх
          (узел графа поймает его в своём except-блоке).
     """
@@ -70,7 +70,7 @@ def invoke_with_retry(chain: Any, messages: list, node: str = "") -> Any:
 
         except Exception as exc:
             if not _is_rate_limit(exc):
-                raise  # не 429 — не трогаем, пробрасываем сразу
+                raise  # не 429 - не трогаем, пробрасываем сразу
 
             last_exc = exc
             retry_after = _extract_retry_after(exc)
@@ -85,7 +85,7 @@ def invoke_with_retry(chain: Any, messages: list, node: str = "") -> Any:
                 delay *= settings.llm_retry_multiplier
             else:
                 logger.error(
-                    f"[{node}] 429 Rate Limit — все {settings.llm_retry_max_attempts} попытки исчерпаны."
+                    f"[{node}] 429 Rate Limit - все {settings.llm_retry_max_attempts} попытки исчерпаны."
                 )
 
     raise last_exc  # type: ignore[misc]
@@ -119,7 +119,7 @@ def _make_openrouter(model_name: str, temperature: float) -> BaseChatModel:
 
 def _make_ollama(model_name: str, temperature: float) -> BaseChatModel:
     """
-    ChatOllama — локальный LLM-сервер.
+    ChatOllama - локальный LLM-сервер.
 
     Установка модели перед использованием:
         ollama pull llama3.1:8b
@@ -137,10 +137,10 @@ def _make_ollama(model_name: str, temperature: float) -> BaseChatModel:
         base_url    = settings.ollama_host,
         temperature = temperature,
         reasoning   = settings.ollama_think,
-        # Явно включаем JSON-mode — это важно для with_structured_output.
+        # Явно включаем JSON-mode - это важно для with_structured_output.
         # Без него Ollama иногда добавляет текст вокруг JSON.
         format      = "json",
-        num_predict = 2048,   # хватит для SQL и классификации / ограничивает длину ответа (экономит RAM)
+        num_predict = settings.llm_max_tokens,
     )
 
 
@@ -156,12 +156,12 @@ def make_llm(
     Создаёт LLM нужного размера через активный провайдер.
 
     Args:
-        size:        "small" — классификация и форматирование
-                     "large" — генерация SQL
-        temperature: 0.0 — детерминированные ответы
+        size:        "small" - классификация и форматирование
+                     "large" - генерация SQL
+        temperature: 0.0 - детерминированные ответы
 
     Returns:
-        BaseChatModel — работает одинаково независимо от провайдера.
+        BaseChatModel - работает одинаково независимо от провайдера.
     """
     model_name = settings.model_small if size == "small" else settings.model_large
     provider   = settings.active_provider
@@ -179,7 +179,7 @@ def make_llm(
 # ===============================
 # lru_cache создаёт по одному экземпляру на (size, temperature).
 # Это важно: каждый ChatOpenAI/ChatOllama держит HTTP-сессию,
-# создавать новый на каждый вызов узла — расточительно.
+# создавать новый на каждый вызов узла - расточительно.
 
 @lru_cache(maxsize=4)
 def get_llm(
@@ -203,7 +203,7 @@ def get_llm(
 
 def check_provider() -> dict:
     """
-    Пинг активного провайдера — полезно при старте приложения.
+    Пинг активного провайдера - полезно при старте приложения.
 
     Returns:
         {"provider": str, "model": str, "ok": bool, "error": str | None}

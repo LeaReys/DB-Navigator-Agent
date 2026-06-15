@@ -39,7 +39,7 @@ def _add_step(step: str) -> list[str]:
 
 def _default_target() -> tuple[str, str]:
     """
-    (server_alias, database) первого сервера из конфига —
+    (server_alias, database) первого сервера из конфига -
     запасной вариант, когда таблицу не удалось определить из стейта.
     """
     first = settings.servers[0]
@@ -69,7 +69,7 @@ def _resolve_target(state: AgentState) -> tuple[str, str]:
 def classify_intent(state: AgentState) -> dict:
     """
     Классифицирует запрос через structured output малой LLM.
-    При ошибке LLM — не роняем агента, возвращаем UNKNOWN.
+    При ошибке LLM - не роняем агента, возвращаем UNKNOWN.
     """
     from core.llm.llm import get_llm, invoke_with_retry
     from core.llm.prompts import CLASSIFY_SYSTEM, CLASSIFY_USER
@@ -132,17 +132,17 @@ def get_schema_node(state: AgentState) -> dict:
     """
     Получает структуру таблицы из MS SQL.
 
-    Логика разрешения имени таблицы — два уровня:
+    Логика разрешения имени таблицы - два уровня:
 
     1. Классификатор → mentioned_tables[0].
        Работает когда пользователь называет таблицу точно: "структура debt".
-       Но классификатор может вернуть бизнес-термин ("долг", "должник"),
-       которого нет в БД — тогда get_table_schema вернёт EMPTY.
+       Если классификатор вернул бизнес-термин ("долг", "должник"),
+        тогда get_table_schema вернёт EMPTY.
 
     2. RAG-fallback → search_metadata(query).
        Срабатывает в двух случаях:
          а) mentioned_tables пустой (пользователь не назвал таблицу явно);
-         б) прямой поиск по mentioned_tables[0] не нашёл таблицу —
+         б) прямой поиск по mentioned_tables[0] не нашёл таблицу -
             значит, классификатор отдал бизнес-термин, RAG его разрешает.
     """
     query          = state["user_query"]
@@ -166,20 +166,15 @@ def get_schema_node(state: AgentState) -> dict:
 
         result = get_table_schema(server, database, table)
 
-        # Если таблица не найдена — классификатор мог вернуть бизнес-термин
-        # ("долг" вместо "debt"). Пробуем разрешить через RAG.
+        # Если таблица не найдена. Пробуем разрешить через RAG.
         if result.status in (ToolStatus.EMPTY, ToolStatus.ERROR):
-            logger.info(
-                f"[get_schema] '{table}' не найдена напрямую "
-                f"(статус={result.status}), пробуем RAG"
-            )
             resolved = _resolve_via_rag()
             if resolved:
                 table, server, database = resolved
                 logger.info(f"[get_schema] RAG разрешил: '{table}'")
                 result = get_table_schema(server, database, table)
     else:
-        # Таблица не названа явно — сразу идём в RAG
+        # Таблица не названа явно - сразу идём в RAG
         resolved = _resolve_via_rag()
         if resolved:
             table, server, database = resolved
@@ -299,8 +294,8 @@ def fix_sql_node(state: AgentState) -> dict:
     """
     Исправляет SQL-запрос после ошибки выполнения.
 
-    Запускается только когда execute_query_node вернул статус ERROR
-    и лимит попыток не исчерпан.
+    Запускается только когда execute_query_node вернул 
+    статус ERROR и лимит попыток не исчерпан.
     """
     from core.llm.llm import get_llm, invoke_with_retry
     from core.llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER, build_schema_context
@@ -313,7 +308,7 @@ def fix_sql_node(state: AgentState) -> dict:
     failed_sql = (
         sql_result.generated.sql
         if sql_result and sql_result.generated
-        else "— SQL отсутствует —"
+        else "- SQL отсутствует -"
     )
     error_msg = (
         execute_result.error_msg
@@ -329,7 +324,7 @@ def fix_sql_node(state: AgentState) -> dict:
     schema_context = build_schema_context(state)
 
     try:
-        chain = get_llm("large").with_structured_output(GeneratedSQL)
+        chain = get_llm("large", temperature = 0.1).with_structured_output(GeneratedSQL)
         fixed: GeneratedSQL = invoke_with_retry(
             chain,
             [
@@ -394,13 +389,10 @@ def _collect_response_metadata(
     state: AgentState,
 ) -> tuple[list[SourceReference], str | None, bool]:
     """
-    Собирает метаданные финального ответа из стейта:
-      - sources:  источники (таблицы из RAG + схема)
-      - sql_text: сгенерированный SQL, если был
-      - has_data: True, если execute_query вернул данные
+    Собирает метаданные финального ответа из стейта.
 
     Вынесено из format_response_node, чтобы отделить сбор данных
-    от вызова LLM — так узел читается и тестируется проще.
+    от вызова LLM - так узел читается и тестируется проще.
     """
     sources: list[SourceReference] = []
     sql_text: str | None = None
@@ -428,7 +420,7 @@ def _collect_response_metadata(
 def format_response_node(state: AgentState) -> dict:
     """
     Формирует финальный ответ через малую LLM.
-    Fallback — собирает ответ из контекста без LLM.
+    Fallback - собирает ответ из контекста без LLM.
     """
     from core.llm.llm import get_llm, invoke_with_retry
     from core.llm.prompts import get_format_system, FORMAT_USER, build_results_context
