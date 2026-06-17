@@ -68,11 +68,11 @@ class Settings(BaseSettings):
     openrouter_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
 
     openrouter_model_small: str = Field(
-        default="mistralai/mistral-7b-instruct:free",
+        default="nvidia/nemotron-nano-9b-v2:free",
         validation_alias="OPENROUTER_MODEL_SMALL",
     )
     openrouter_model_large: str = Field(
-        default="deepseek/deepseek-coder-v2-instruct:free",
+        default="poolside/laguna-m.1:free",
         validation_alias="OPENROUTER_MODEL_LARGE",
     )
 
@@ -128,9 +128,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    hf_token: str = Field(default="", validation_alias="HF_TOKEN")
+
     # == Унифицированный доступ к именам моделей ===============
-    # Используй эти свойства в коде — они сами выбирают нужный провайдер.
-    # Так не нужно писать if/else везде где нужно имя модели.
+
     @property
     def model_small(self) -> str:
         """Имя малой модели для активного провайдера."""
