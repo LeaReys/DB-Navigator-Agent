@@ -9,7 +9,7 @@ langchain-ollama>=0.2.0       # для локального Ollama (опцион
 langchain>=0.2.0
 
 # === LangFuse — observability ===
-langfuse>=2.0.0               # трейсинг, токены, cost per run
+langfuse>=3.0.0,<4.0.0        # трейсинг, токены, cost per run
 
 # === RAG / векторный поиск ===
 chromadb>=0.5.0               # локальный векторный стор

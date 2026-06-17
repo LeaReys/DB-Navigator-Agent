@@ -159,7 +159,11 @@ def _run_stream(query: str, session_id: str) -> Iterator[str]:
             "callbacks": [handler],
             "run_name": "db-navigator-agent",
             "tags": ["web"],
-            "metadata": {"langfuse_session_id": session_id, "query": query},
+            "metadata": {
+                "langfuse_session_id": session_id,   # v3: сессия через metadata
+                "langfuse_tags": ["web"],            # v3: теги через metadata
+                "query": query,
+            },
         }
 
     yield _sse({
@@ -273,7 +277,7 @@ def health():
     except Exception as exc:  # noqa: BLE001
         result["servers_error"] = str(exc)[:200]
 
-    # RAG: проверяем флаг готовности, выставляемый при старте (warmup).
+    # RAG
     rag_ready = _RAG_READY
     try:
         from core.rag import retriever as _r

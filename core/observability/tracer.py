@@ -22,58 +22,99 @@ def is_enabled() -> bool:
     return bool(settings.langfuse_public_key and settings.langfuse_secret_key)
 
 
+# Глобальный клиент LangFuse v3 инициализируем один раз на процесс.
+_v3_client = None
+
+
+def _ensure_v3_client():
+    """Инициализирует глобальный клиент LangFuse v3 нашими ключами."""
+    global _v3_client
+    if _v3_client is None:
+        from langfuse import Langfuse
+        from core.config import settings
+        _v3_client = Langfuse(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_host,
+        )
+    return _v3_client
+
+
 def get_handler(
     session_id: str,
     user_query: str,
     tags: list[str] | None = None,
 ) -> object | None:
     """
-    Создаёт и возвращает LangFuse CallbackHandler
-    для передачи в graph.invoke(config={"callbacks": [handler]}).
-    LangGraph сам вызывает его на каждом шаге.
+    Создаёт LangFuse CallbackHandler для graph.invoke/stream
+    (config={"callbacks": [handler]}).
+
+    Совместимость по версиям SDK:
+      - v3 
+      - v2 
     """
     if not is_enabled():
         return None
 
-    try:
-        from core.config import settings
-        try:
-            from langfuse.langchain import CallbackHandler
-        except ImportError:
-            from langfuse.callback import CallbackHandler
-        from langfuse import get_client
+    from core.config import settings
 
-        handler = CallbackHandler(
+    # --- LangFuse v3 ------------------------------------------------------
+    try:
+        from langfuse.langchain import CallbackHandler  # есть только в v3
+    except ImportError:
+        CallbackHandler = None  # type: ignore[assignment]
+
+    if CallbackHandler is not None:
+        try:
+            _ensure_v3_client()                 # креды -> глобальный клиент
+            handler = CallbackHandler()         # без аргументов (v3 API)
+            logger.info(f"LangFuse v3 handler создан (session={session_id[:8]}...)")
+            return handler
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Ошибка создания LangFuse v3 handler: {e}")
+            return None
+
+    # --- LangFuse v2 (fallback) ------------------------------------------
+    try:
+        from langfuse.callback import CallbackHandler as CallbackHandlerV2
+        handler = CallbackHandlerV2(
             public_key=settings.langfuse_public_key,
             secret_key=settings.langfuse_secret_key,
             host=settings.langfuse_host,
             session_id=session_id,
             tags=tags or [],
         )
-        logger.info(f"LangFuse handler создан (session={session_id[:8]}...)")
+        logger.info(f"LangFuse v2 handler создан (session={session_id[:8]}...)")
         return handler
-
     except ImportError:
         logger.warning("langfuse не установлен.")
         return None
-
     except Exception as e:
-        logger.error(f"Ошибка создания LangFuse handler: {e}")
+        logger.error(f"Ошибка создания LangFuse v2 handler: {e}")
         return None
 
 
-def flush(handler: object | None) -> None:
+def flush(handler: object | None = None) -> None:
     """
-    Принудительно отправляет все накопленные события в LangFuse.
+    Принудительно отправляет накопленные события в LangFuse.
 
-    Если не вызвать flush(), последние события могут не успеть 
-    отправиться до завершения процесса и трейс окажется неполным.
+    v3: у хендлера метода flush нет.
+    v2: flush есть у самого хендлера.
     """
-    if hasattr(handler, 'flush'):
+    # v3
+    try:
+        from langfuse import get_client
+        get_client().flush()
+        return
+    except Exception:  # noqa: BLE001
+        pass
+
+    # v2
+    if handler is not None and hasattr(handler, "flush"):
         try:
             handler.flush()
-        except Exception as e:
-            logger.debug(f"flush() не доступен: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"flush() недоступен: {e}")
 
 
 # =============================================================
