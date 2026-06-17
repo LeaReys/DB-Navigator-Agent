@@ -207,3 +207,11 @@ def _build_default_settings() -> Settings:
 
 # Единственный экземпляр настроек для всего приложения
 settings = _build_default_settings()
+
+
+# Централизованно прокидываем HF_TOKEN в стандартные переменные окружения,
+# которые читает huggingface_hub. Делаем это здесь — в единой точке загрузки
+# конфига, — чтобы остальные модули (RAG) не дублировали эту логику.
+if settings.hf_token:
+    for _hf_var in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
+        os.environ.setdefault(_hf_var, settings.hf_token)

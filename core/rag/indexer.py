@@ -22,20 +22,12 @@ from pathlib import Path
 
 import yaml
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 from core.db.connector import connector, ConnectorError
 from core.config import settings, ServerConfig, DatabaseConfig
+from core.rag.embeddings import COLLECTION_NAME, EMBEDDING_MODEL, get_embedding_function
 
 logger = logging.getLogger(__name__)
-
-# Название коллекции в ChromaDB
-COLLECTION_NAME = "db_schema"
-
-# Модель эмбеддингов — локальная, не требует API-ключа.
-# multilingual-e5-small: понимает русский и английский, весит ~120MB,
-# работает быстро даже без GPU.
-EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 
 # Путь к файлу доменных знаний (синонимы, связи, бизнес-описания)
 _KNOWLEDGE_FILE = Path(__file__).with_name("domain_knowledge.yaml")
@@ -152,13 +144,11 @@ class SchemaIndexer:
     def _get_or_create_collection(self) -> chromadb.Collection:
         """
         Возвращает или создаёт коллекцию в ChromaDB.
+        Эмбеддинг-функция берётся из общего модуля (модель грузится 1 раз).
         """
-        ef = SentenceTransformerEmbeddingFunction(
-            model_name=EMBEDDING_MODEL,
-        )
         collection = self._client.get_or_create_collection(
             name=COLLECTION_NAME,
-            embedding_function=ef,
+            embedding_function=get_embedding_function(),
             metadata={"hnsw:space": "cosine"},  # косинусное расстояние
         )
         logger.info(f"Коллекция '{COLLECTION_NAME}': {collection.count()} документов")
@@ -391,15 +381,36 @@ class SchemaIndexer:
 
 
 # =============================================================
-# CLI запуск: python -m rag.indexer
+# Удобный вызов из startup приложения
+# =============================================================
+
+def build_index_if_empty(force: bool = False) -> dict:
+    """
+    Строит индекс, только если он ещё пустой (или force=True).
+
+    Вызывается на старте веб-приложения: в Docker база поднимается рядом,
+    а готового chroma_db в образе нет — поэтому индекс строится один раз
+    при первом запуске. Если БД недоступна — не падаем, а отдаём ошибку
+    в статистике; агент продолжит работать через SQL-fallback.
+    """
+    indexer = SchemaIndexer()
+    if not force and indexer.get_stats()["total_documents"] > 0:
+        logger.info("RAG-индекс уже построен — пропускаем индексацию.")
+        return {"indexed": 0, "skipped": 0, "errors": 0, "already_built": True}
+
+    logger.info("RAG-индекс пуст — запускаем индексацию схемы БД…")
+    return indexer.run(force=force)
+
+
+# =============================================================
+# CLI запуск: python -m core.rag.indexer
 # =============================================================
 
 if __name__ == "__main__":
     import json
+    import sys
 
-    from dotenv import load_dotenv
-    load_dotenv()
-
+    # .env уже загружается при импорте core.config — отдельный load_dotenv не нужен.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     print("=== DB Navigator — индексация схемы БД ===\n")
@@ -410,13 +421,12 @@ if __name__ == "__main__":
     print(json.dumps(indexer.get_stats(), indent=2, ensure_ascii=False))
     print()
 
-    import sys
     force = "--force" in sys.argv
 
     print(f"Запускаем индексацию (force={force})...")
     stats = indexer.run(force=force)
 
-    print(f"\nГотово:")
+    print("\nГотово:")
     print(f"  Проиндексировано: {stats['indexed']} таблиц")
     print(f"  Пропущено:        {stats['skipped']} таблиц")
     print(f"  Ошибок:           {stats['errors']}")
