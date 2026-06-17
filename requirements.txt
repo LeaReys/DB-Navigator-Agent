@@ -6,7 +6,6 @@ langgraph>=0.2.0
 langchain-core>=0.3.0
 langchain-openai>=0.2.0       # для OpenRouter (ChatOpenAI с кастомным base_url)
 langchain-ollama>=0.2.0       # для локального Ollama (опционально)
-langchain>=0.2.0
 
 # === LangFuse — observability ===
 langfuse>=2.0.0               # трейсинг, токены, cost per run

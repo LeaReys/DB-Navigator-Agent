@@ -17,20 +17,15 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-from huggingface_hub import login
 
 from core.db.connector import connector, ConnectorError
 from core.config import settings, ServerConfig, DatabaseConfig
-
-from dotenv import load_dotenv
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -158,14 +153,6 @@ class SchemaIndexer:
         """
         Возвращает или создаёт коллекцию в ChromaDB.
         """
-        # Авторизуемся в HuggingFace Hub для скачивания модели
-        hf_token = os.getenv("HF_TOKEN")
-        if hf_token:
-            try:
-                login(token=hf_token, add_to_git_credential=False)
-            except Exception as e:
-                logger.warning(f"Ошибка авторизации в HF Hub: {e}")
-        
         ef = SentenceTransformerEmbeddingFunction(
             model_name=EMBEDDING_MODEL,
         )

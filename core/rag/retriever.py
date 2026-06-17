@@ -10,11 +10,9 @@
 from __future__ import annotations
 
 import logging
-import os
 
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-from huggingface_hub import login
 
 from core.config import settings
 from core.schemas.models import MetadataChunk
@@ -36,15 +34,6 @@ class SchemaRetriever:
 
     def _load_collection(self) -> chromadb.Collection:
         """Открывает существующую коллекцию ChromaDB."""
-
-        # Авторизуемся в HuggingFace Hub для скачивания модели
-        hf_token = os.getenv("HF_TOKEN")
-        if hf_token:
-            try:
-                login(token=hf_token, add_to_git_credential=False)
-            except Exception as e:
-                logger.warning(f"Ошибка авторизации в HF Hub: {e}")
-        
         ef = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
 
         client = chromadb.PersistentClient(path=settings.chroma_persist_dir)

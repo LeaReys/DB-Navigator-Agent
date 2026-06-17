@@ -168,6 +168,10 @@ def get_schema_node(state: AgentState) -> dict:
 
         # Если таблица не найдена. Пробуем разрешить через RAG.
         if result.status in (ToolStatus.EMPTY, ToolStatus.ERROR):
+            logger.info(
+                f"[get_schema] '{table}' не найдена напрямую "
+                f"(статус={result.status}), пробуем RAG"
+            )
             resolved = _resolve_via_rag()
             if resolved:
                 table, server, database = resolved
