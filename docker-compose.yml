@@ -21,6 +21,8 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
       MSSQL_SA_PASSWORD: "Demo_Strong_Password_123!"
+      MSSQL_MEMORY_LIMIT_MB: 1500
+    mem_limit: 1800m
     ports:
       - "14333:1433"          # наружу — для SSMS/azure-data-studio при желании
     volumes:
