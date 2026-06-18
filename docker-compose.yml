@@ -21,6 +21,8 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
       MSSQL_SA_PASSWORD: "Demo_Strong_Password_123!"
+      MSSQL_MEMORY_LIMIT_MB: 1500
+    mem_limit: 1800m
     ports:
       - "14333:1433"          # наружу — для SSMS/azure-data-studio при желании
     volumes:
@@ -59,8 +61,10 @@ services:
       # --- LLM (OpenRouter). Ключ задаётся в .env рядом с этим файлом ---
       USE_OLLAMA: "false"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:?Впишите OPENROUTER_API_KEY в файл .env}"
-      OPENROUTER_MODEL_SMALL: "${OPENROUTER_MODEL_SMALL:-mistralai/mistral-7b-instruct:free}"
-      OPENROUTER_MODEL_LARGE: "${OPENROUTER_MODEL_LARGE:-deepseek/deepseek-coder-v2-instruct:free}"
+      OPENROUTER_MODEL_SMALL: "${OPENROUTER_MODEL_SMALL:-nvidia/nemotron-nano-9b-v2:free}"
+      OPENROUTER_MODEL_LARGE: "${OPENROUTER_MODEL_LARGE:-nvidia/nemotron-nano-9b-v2:free}"
+      HF_TOKEN: "${HF_TOKEN:?Впишите HF_TOKEN в файл .env}"
+      
 
       # --- demo-БД внутри compose-сети (read-only логин из init.sql) ---
       DB_SERVER_1_ALIAS: "demo"

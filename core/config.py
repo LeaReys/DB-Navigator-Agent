@@ -68,11 +68,11 @@ class Settings(BaseSettings):
     openrouter_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
 
     openrouter_model_small: str = Field(
-        default="mistralai/mistral-7b-instruct:free",
+        default="nvidia/nemotron-nano-9b-v2:free",
         validation_alias="OPENROUTER_MODEL_SMALL",
     )
     openrouter_model_large: str = Field(
-        default="deepseek/deepseek-coder-v2-instruct:free",
+        default="poolside/laguna-m.1:free",
         validation_alias="OPENROUTER_MODEL_LARGE",
     )
 
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     use_ollama: bool = Field(default=False, validation_alias="USE_OLLAMA")
 
     # Макс. кол-во токенов в ответе от LLM — важно для контроля затрат и предотвращения слишком длинных ответов.
-    llm_max_tokens: int = Field(default=5000, validation_alias="LLM_MAX_TOKENS")
+    llm_max_tokens: int = Field(default=8000, validation_alias="LLM_MAX_TOKENS")
     
     # LLM retry при 429
     llm_retry_max_attempts: int   = Field(default=3,   validation_alias="LLM_RETRY_MAX_ATTEMPTS")
@@ -128,9 +128,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    hf_token: str = Field(default="", validation_alias="HF_TOKEN")
+
     # == Унифицированный доступ к именам моделей ===============
-    # Используй эти свойства в коде — они сами выбирают нужный провайдер.
-    # Так не нужно писать if/else везде где нужно имя модели.
+
     @property
     def model_small(self) -> str:
         """Имя малой модели для активного провайдера."""
@@ -206,3 +207,11 @@ def _build_default_settings() -> Settings:
 
 # Единственный экземпляр настроек для всего приложения
 settings = _build_default_settings()
+
+
+# Централизованно прокидываем HF_TOKEN в стандартные переменные окружения,
+# которые читает huggingface_hub. Делаем это здесь — в единой точке загрузки
+# конфига, — чтобы остальные модули (RAG) не дублировали эту логику.
+if settings.hf_token:
+    for _hf_var in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
+        os.environ.setdefault(_hf_var, settings.hf_token)

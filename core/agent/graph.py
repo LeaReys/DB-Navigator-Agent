@@ -228,7 +228,8 @@ def run_traced(
             "run_name": "db-navigator-agent",
             "tags": tags or [],
             "metadata": {
-                "langfuse_session_id": session_id,
+                "langfuse_session_id": session_id,   # v3: сессия через metadata
+                "langfuse_tags": tags or [],         # v3: теги через metadata
                 "query": user_query,
             },
         }

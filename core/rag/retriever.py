@@ -5,66 +5,49 @@
 в ChromaDB и возвращает список MetadataChunk.
 
 Важно: retriever — read-only. Он только читает из индекса, не изменяет его.
+
+Загрузка модели эмбеддингов вынесена в core.rag.embeddings и происходит
+один раз на процесс — retriever и indexer переиспользуют общий объект.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-from huggingface_hub import login
 
 from core.config import settings
+from core.rag.embeddings import COLLECTION_NAME, get_embedding_function
 from core.schemas.models import MetadataChunk
 
 logger = logging.getLogger(__name__)
 
-COLLECTION_NAME  = "db_schema"
-EMBEDDING_MODEL  = "intfloat/multilingual-e5-small"
 MIN_SIMILARITY = 0.3        # Минимальный score для включения результата в ответ.
 
 
 class SchemaRetriever:
     """
     Выполняет семантический поиск по индексу схемы БД.
+
+    Конструктор НИКОГДА не падает, даже если индекс ещё не построен:
+    в этом случае создаётся пустая коллекция, is_ready() вернёт False,
+    а вызывающий код (search_metadata) уйдёт на SQL-fallback.
+    Это снимает прежний баг, когда падение в __init__ заставляло
+    get_retriever() пересоздавать объект и заново грузить модель в цикле.
     """
 
     def __init__(self) -> None:
-        self._collection = self._load_collection()
-
-    def _load_collection(self) -> chromadb.Collection:
-        """Открывает существующую коллекцию ChromaDB."""
-
-        # Авторизуемся в HuggingFace Hub для скачивания модели
-        hf_token = os.getenv("HF_TOKEN")
-        if hf_token:
-            try:
-                login(token=hf_token, add_to_git_credential=False)
-            except Exception as e:
-                logger.warning(f"Ошибка авторизации в HF Hub: {e}")
-        
-        ef = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
-
-        client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-
-        try:
-            collection = client.get_collection(
-                name=COLLECTION_NAME,
-                embedding_function=ef,
-            )
-            logger.info(
-                f"Индекс загружен: {collection.count()} документов "
-                f"из '{settings.chroma_persist_dir}'"
-            )
-            return collection
-        except Exception as e:
-            raise RuntimeError(
-                f"Индекс не найден в '{settings.chroma_persist_dir}'. "
-                f"Необходимо запустить сначала: python -m rag.indexer\n"
-                f"Текст ошибки: {e}"
-            ) from e
+        self._client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+        # get_or_create — не бросает исключение, если коллекции ещё нет.
+        self._collection = self._client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=get_embedding_function(),
+            metadata={"hnsw:space": "cosine"},
+        )
+        logger.info(
+            "Индекс открыт: %s документов из '%s'",
+            self._collection.count(), settings.chroma_persist_dir,
+        )
 
     def search(
         self,
@@ -74,41 +57,35 @@ class SchemaRetriever:
         """
         Ищет релевантные таблицы по запросу.
 
-        Args:
-            query: вопрос пользователя
-            top_k: количество результатов (по умолчанию из settings.rag_top_k)
-
         Returns:
             Список MetadataChunk, отсортированный по убыванию релевантности.
             Если индекс пустой или ничего не найдено — пустой список.
         """
         limit = top_k if top_k is not None else settings.rag_top_k
 
-        if self._collection.count() == 0:
-            logger.warning("Индекс пустой. Запусти python -m rag.indexer")
+        count = self._collection.count()
+        if count == 0:
+            logger.warning("Индекс пустой. Запусти: python -m core.rag.indexer")
             return []
 
-        logger.debug(f"Поиск: '{query}', top_k={limit}")
+        logger.debug("Поиск: '%s', top_k=%s", query, limit)
 
-        # добавляем префикс "query: " перед запросом.
-        # Без префикса запрос эмбеддится в другом «пространстве» чем документы,
-        # и косинусное сходство между ними ниже, чем должно быть.
+        # Префикс "query: " обязателен для модели e5 — без него запрос
+        # эмбеддится в другом «пространстве», чем документы (passage: ...),
+        # и косинусное сходство занижается.
         results = self._collection.query(
-            query_texts = [f"query: {query}"],          # ← префикс e5
-            n_results   = min(limit, self._collection.count()),
-            include     = ["documents", "metadatas", "distances"],
+            query_texts=[f"query: {query}"],
+            n_results=min(limit, count),
+            include=["documents", "metadatas", "distances"],
         )
 
         chunks = self._parse_results(results, query)
-
-        # Фильтруем по минимальному score
         filtered = [c for c in chunks if c.score >= MIN_SIMILARITY]
 
         logger.info(
-            f"Поиск '{query}': найдено {len(chunks)}, "
-            f"после фильтрации (score>={MIN_SIMILARITY}): {len(filtered)}"
+            "Поиск '%s': найдено %s, после фильтра (score>=%s): %s",
+            query, len(chunks), MIN_SIMILARITY, len(filtered),
         )
-
         return filtered
 
     def _parse_results(
@@ -118,57 +95,52 @@ class SchemaRetriever:
     ) -> list[MetadataChunk]:
         """
         Преобразует сырой ответ ChromaDB в список MetadataChunk.
-
-        ChromaDB возвращает distance (чем меньше — тем лучше).
-        Переводим в similarity (чем больше — тем лучше) для удобства.
+        ChromaDB возвращает distance (меньше — лучше), переводим в similarity.
         """
         chunks: list[MetadataChunk] = []
 
-        # ChromaDB возвращает вложенные списки (один запрос → один элемент)
         metadatas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]
 
         for meta, distance in zip(metadatas, distances):
-            # Cosine distance → similarity
-            # ChromaDB: distance ∈ [0, 2], где 0 = идентично
             similarity = round(1.0 - distance / 2.0, 3)
-            similarity = max(0.0, min(1.0, similarity))  # clip в [0, 1]
+            similarity = max(0.0, min(1.0, similarity))
 
-            # Колонки хранятся как строка "col1, col2, col3"
             columns_raw = meta.get("columns", "")
             columns = [c.strip() for c in columns_raw.split(",") if c.strip()]
 
-            chunk = MetadataChunk(
+            chunks.append(MetadataChunk(
                 table_name  = meta["table_name"],
                 server      = meta["server"],
                 database    = meta["database"],
                 description = meta.get("description") or "",
                 score       = similarity,
                 columns     = columns,
-            )
-            chunks.append(chunk)
+            ))
 
         return chunks
 
-    def is_ready(self) -> bool:
-        """Проверяет, что индекс существует и не пустой."""
+    def count(self) -> int:
+        """Число документов в индексе (дёшево, без загрузки модели)."""
         try:
-            return self._collection.count() > 0
+            return self._collection.count()
         except Exception:
-            return False
+            return 0
+
+    def is_ready(self) -> bool:
+        """True, если индекс существует и не пустой."""
+        return self.count() > 0
 
 
 # =============================================================
 # Singleton: один экземпляр на всё приложение
 # =============================================================
 
-# Ленивая инициализация — создаём только при первом обращении,
-# чтобы не падать при старте если индекс ещё не построен.
 _retriever_instance: SchemaRetriever | None = None
 
 
 def get_retriever() -> SchemaRetriever:
-    """Возвращает единственный экземпляр SchemaRetriever."""
+    """Возвращает единственный экземпляр SchemaRetriever (ленивая инициализация)."""
     global _retriever_instance
     if _retriever_instance is None:
         _retriever_instance = SchemaRetriever()
