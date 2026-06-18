@@ -36,10 +36,9 @@ from pydantic import BaseModel
 
 from api.events import node_event, final_event
 
-logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-for name in ("agent", "llm", "observability", "web", "core"):
-    logging.getLogger(name).setLevel(logging.INFO)
-logger = logging.getLogger("web.server")
+from core.logging_config import setup_logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
