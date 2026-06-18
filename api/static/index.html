@@ -80,5 +80,43 @@
   </footer>
 
   <script src="/static/app.js"></script>
+  <script>
+  /* Резилиентная проверка окружения. Живёт в index.html (приезжает вместе
+     с HTML), поэтому работает, даже если app.js долетел обрезанным.
+     Таймаут + ретраи: чип никогда не висит «вечно» — либо статус, либо ошибка. */
+  (function () {
+    var statusEl = document.getElementById("status");
+    if (!statusEl) return;
+    function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+    function render(h){
+      var s = h.servers || [];
+      var dbOk = s.length > 0 && s.every(function(x){return x.ok;});
+      var dbName = (s[0] && s[0].database) || "db";
+      statusEl.innerHTML =
+        '<span class="chip ' + (h.provider?"ok":"off") + '">' + esc(h.provider||"llm") + '</span>' +
+        '<span class="chip ' + (dbOk?"ok":"bad") + ' hide-sm">db: ' + esc(dbName) + '</span>' +
+        '<span class="chip ' + (h.rag_ready?"ok":"off") + ' hide-sm">rag</span>' +
+        '<span class="chip ' + (h.langfuse?"live":"off") + ' hide-sm">langfuse</span>';
+    }
+    function load(attempt){
+      attempt = attempt || 1;
+      var ctrl = new AbortController();
+      var timer = setTimeout(function(){ ctrl.abort(); }, 8000);
+      fetch("/api/health", { signal: ctrl.signal, cache: "no-store" })
+        .then(function(r){ clearTimeout(timer); return r.json(); })
+        .then(render)
+        .catch(function(){
+          clearTimeout(timer);
+          if (attempt < 4) {
+            setTimeout(function(){ load(attempt + 1); }, attempt * 1500);
+          } else {
+            statusEl.innerHTML = '<span class="chip bad">сервер недоступен — повтор…</span>';
+            setTimeout(function(){ load(1); }, 15000);  // самовосстановление
+          }
+        });
+    }
+    load();
+  })();
+  </script>
 </body>
 </html>
