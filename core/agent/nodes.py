@@ -389,6 +389,27 @@ def unsafe_query_node(state: AgentState) -> dict:
 # ===============================
 # УЗЕЛ 7: Форматирование финального ответа
 # ===============================
+def _derive_error(state: AgentState) -> str | None:
+    """
+    Вычисляет текст ошибки агента из result-объектов (error_msg) стейта.
+    Для отображения текста ошибки пользователю или None, если сбоев нет.
+    """
+    sql_result = state.get("sql_result")
+    if sql_result and sql_result.status == ToolStatus.ERROR:
+        return sql_result.error_msg or "Ошибка генерации SQL"
+
+    execute_result = state.get("execute_result")
+    if execute_result and execute_result.status == ToolStatus.ERROR:
+        return execute_result.error_msg or "Ошибка выполнения запроса"
+
+    # Таблица не найдена: status EMPTY, но с заполненным error_msg
+    schema_result = state.get("schema_result")
+    if schema_result and schema_result.error_msg:
+        return schema_result.error_msg
+
+    return None
+
+
 def _collect_response_metadata(
     state: AgentState,
 ) -> tuple[list[SourceReference], str | None, bool]:
@@ -433,6 +454,12 @@ def format_response_node(state: AgentState) -> dict:
     classification = state.get("classification")
     query_type     = classification.query_type if classification else QueryType.UNKNOWN
 
+    # Вычисляем ошибку агента из result-объектов.
+    error = _derive_error(state)
+    if error:
+        state = {**state, "error": error}
+        logger.info(f"[format_response] обнаружена ошибка агента: {error}")
+
     logger.info(f"[format_response] тип={query_type}")
 
     try:
@@ -461,7 +488,11 @@ def format_response_node(state: AgentState) -> dict:
         confidence=classification.confidence if classification else 0.0,
         has_data=has_data,
     )
-    return {"final_response": final, "steps": _add_step("format_response")}
+    return {
+        "final_response": final,
+        "error": error,
+        "steps": _add_step("format_response"),
+    }
 
 # ===============================
 # УЗЕЛ-ЗАГЛУШКА: обработка неизвестного запроса
