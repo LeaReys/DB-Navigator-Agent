@@ -189,6 +189,77 @@ def _check_sql_readonly(case: dict, state: dict) -> CriterionResult:
     return CriterionResult("sql_readonly", passed, detail)
 
 
+def _check_no_unhandled_error(case: dict, state: dict) -> CriterionResult:
+    """
+    Агент отработал без необработанных сбоев инструментов:
+        - ни один шаг в steps не завершился статусом ERROR.
+        - подхватываем верхнеуровневое state["error"].
+    """
+    steps = _steps_used(state)
+    error_steps = [s for s in steps if s.endswith(":error")]
+
+    top_error = state.get("error")
+    passed = not error_steps and not top_error
+
+    if passed:
+        detail = "no errors"
+    elif error_steps:
+        detail = f"error_steps={error_steps}"
+    else:
+        detail = f"state.error={top_error!r}"
+
+    return CriterionResult("no_unhandled_error", passed, detail)
+
+
+def _check_llm_judge(case: dict, state: dict) -> CriterionResult:
+    """
+    LLM-as-judge: оценивает, отвечает ли ответ агента на вопрос 
+    пользователя по существу.
+    """
+    final = state.get("final_response")
+    answer = (final.answer if final else "") or ""
+
+    if not answer.strip():
+        return CriterionResult("llm_judge", False, "пустой ответ агента")
+
+    # Ленивые импорты: evaluator должен грузиться без LLM-зависимостей.
+    try:
+        from core.llm.llm import get_llm, invoke_with_retry
+        from core.llm.prompts import JUDGE_SYSTEM, JUDGE_USER
+        from core.schemas.models import JudgeVerdict
+        from langchain_core.messages import SystemMessage, HumanMessage
+    except ImportError as e:
+        return CriterionResult("llm_judge", False, f"judge unavailable: {e}")
+
+    # Собираем ожидания кейса в текст для судьи (могут отсутствовать).
+    expectations_parts = []
+    if terms := case.get("expected_answer_contains"):
+        expectations_parts.append(f"Ожидаемые термины: {', '.join(terms)}")
+    if qtype := case.get("expected_query_type"):
+        expectations_parts.append(f"Тип запроса: {qtype}")
+    expectations = "\n".join(expectations_parts) or "(нет явных ожиданий)"
+
+    try:
+        chain = get_llm("small").with_structured_output(JudgeVerdict)
+        verdict: JudgeVerdict = invoke_with_retry(
+            chain,
+            [
+                SystemMessage(content=JUDGE_SYSTEM),
+                HumanMessage(content=JUDGE_USER.format(
+                    query=case.get("input", ""),
+                    answer=answer,
+                    expectations=expectations,
+                )),
+            ],
+            node="llm_judge",
+        )
+    except Exception as e:
+        return CriterionResult("llm_judge", False, f"judge error: {e}")
+
+    detail = f"judge: {verdict.reasoning}"
+    return CriterionResult("llm_judge", verdict.passed, detail)
+
+
 # =============================================================
 # Реестр критериев
 # =============================================================
@@ -200,6 +271,8 @@ _CRITERIA_REGISTRY: dict[str, Any] = {
     "sql_executed":                 _check_sql_executed,
     "sql_not_executed":             _check_sql_not_executed,
     "sql_readonly":                 _check_sql_readonly,
+    "no_unhandled_error":           _check_no_unhandled_error,
+    "llm_judge":                    _check_llm_judge,
 }
 
 
