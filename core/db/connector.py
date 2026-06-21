@@ -164,7 +164,7 @@ class DBConnector:
             server_alias: псевдоним сервера из конфига (например "prod")
             database:     имя базы данных
             sql:          SQL-запрос (только SELECT)
-            params:       параметры для подстановки (защита от SQL-инъекций)
+            params:       позиционные параметры для pyodbc (?)
             max_rows:     лимит строк (по умолчанию из settings.max_rows)
         
         Returns:
