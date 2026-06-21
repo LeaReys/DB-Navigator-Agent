@@ -217,7 +217,7 @@ async function sendQuery(text) {
   if (busy || !text.trim()) return;
   busy = true;
   sendBtn.disabled = true;
-  if (emptyEl) emptyEl.remove();
+  if (emptyEl) emptyEl.classList.add("hidden");
 
   addUserTurn(text);
   const { run, rail } = addAgentRun();
@@ -316,6 +316,30 @@ document.getElementById("examples")?.addEventListener("click", (e) => {
   if (!btn) return;
   sendQuery(btn.dataset.q);
 });
+
+/* ------------------- возврат на начальный экран ------------------- */
+
+/* Полностью очищает чат и начинает новую сессию:
+   - удаляет все реплики (кроме стартового экрана);
+   - показывает стартовый экран обратно;
+   - сбрасывает sessionId, чтобы сервер завёл новую сессию. */
+function resetToHome() {
+  if (busy) return;  // не сбрасываем посреди ответа агента
+
+  // Удаляем все turn'ы, но сохраняем сам стартовый экран (empty).
+  chat.querySelectorAll(".turn").forEach((el) => el.remove());
+
+  if (emptyEl) emptyEl.classList.remove("hidden");
+
+  sessionId = null;          // новая сессия на следующий запрос
+  input.value = "";
+  autoresize();
+  input.focus();
+  chat.scrollTop = 0;
+}
+
+document.getElementById("home")?.addEventListener("click", resetToHome);
+document.getElementById("new-chat")?.addEventListener("click", resetToHome);
 
 /* ----------------------------- старт ----------------------------- */
 
