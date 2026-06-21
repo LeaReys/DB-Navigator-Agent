@@ -207,7 +207,8 @@ def generate_sql_node(state: AgentState) -> dict:
     Генерирует SQL-скрипт по запросу пользователя.
     """
     from core.llm.llm import get_llm, invoke_with_retry
-    from core.llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER, build_schema_context
+    from core.llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER
+    from core.llm.context_builder import build_schema_context
  
     query = state["user_query"]
     logger.info(f"[generate_sql] '{query}'")
@@ -302,7 +303,8 @@ def fix_sql_node(state: AgentState) -> dict:
     статус ERROR и лимит попыток не исчерпан.
     """
     from core.llm.llm import get_llm, invoke_with_retry
-    from core.llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER, build_schema_context
+    from core.llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER
+    from core.llm.context_builder import build_schema_context
 
     query          = state["user_query"]
     sql_result     = state.get("sql_result")
@@ -448,7 +450,8 @@ def format_response_node(state: AgentState) -> dict:
     Fallback - собирает ответ из контекста без LLM.
     """
     from core.llm.llm import get_llm, invoke_with_retry
-    from core.llm.prompts import get_format_system, FORMAT_USER, build_results_context
+    from core.llm.prompts import FORMAT_USER
+    from core.llm.context_builder import get_format_system, build_results_context
 
     query          = state.get("user_query", "")
     classification = state.get("classification")
