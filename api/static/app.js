@@ -8,12 +8,10 @@ const form    = document.getElementById("form");
 const input   = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const statusEl = document.getElementById("status");
-const homeBtn = document.getElementById("homeBtn");
-const initialEmptyHTML = document.getElementById("empty")?.outerHTML || "";
+const emptyEl = document.getElementById("empty");
 
 let sessionId = null;
 let busy = false;
-let currentAbortController = null;
 
 /* ----------------------------- утилиты ----------------------------- */
 
@@ -219,21 +217,17 @@ async function sendQuery(text) {
   if (busy || !text.trim()) return;
   busy = true;
   sendBtn.disabled = true;
-  document.getElementById("empty")?.remove();
+  if (emptyEl) emptyEl.remove();
 
   addUserTurn(text);
   const { run, rail } = addAgentRun();
   scrollDown();
-
-  const abortController = new AbortController();
-  currentAbortController = abortController;
 
   try {
     const resp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: text, session_id: sessionId }),
-      signal: abortController.signal,
     });
 
     if (!resp.ok || !resp.body) {
@@ -265,13 +259,8 @@ async function sendQuery(text) {
       }
     }
   } catch (err) {
-    if (err.name !== "AbortError") {
-      renderRunError(run, "Не удалось связаться с агентом: " + err.message);
-    }
+    renderRunError(run, "Не удалось связаться с агентом: " + err.message);
   } finally {
-    if (currentAbortController === abortController) {
-      currentAbortController = null;
-    }
     busy = false;
     sendBtn.disabled = false;
     input.focus();
@@ -300,24 +289,6 @@ function handleEvent(ev, run, rail) {
 
 /* ----------------------------- события UI ----------------------------- */
 
-function resetToStartPage() {
-  currentAbortController?.abort();
-  currentAbortController = null;
-
-  sessionId = null;
-  busy = false;
-  sendBtn.disabled = false;
-
-  input.value = "";
-  autoresize();
-
-  chat.innerHTML = initialEmptyHTML;
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  input.focus();
-}
-
-homeBtn?.addEventListener("click", resetToStartPage);
-
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value.trim();
@@ -340,9 +311,9 @@ function autoresize() {
 }
 input.addEventListener("input", autoresize);
 
-chat.addEventListener("click", (e) => {
+document.getElementById("examples")?.addEventListener("click", (e) => {
   const btn = e.target.closest(".ex");
-  if (!btn || !chat.contains(btn)) return;
+  if (!btn) return;
   sendQuery(btn.dataset.q);
 });
 
