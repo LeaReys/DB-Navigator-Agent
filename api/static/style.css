@@ -81,40 +81,7 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.brand {
-  display: flex; align-items: center; gap: 11px;
-  /* теперь это кнопка «на главную» — убираем дефолтный вид button */
-  background: none; border: none; padding: 4px 6px; margin: -4px -6px;
-  cursor: pointer; border-radius: 10px;
-  font: inherit; color: inherit; text-align: left;
-  transition: background .15s ease, opacity .15s ease;
-}
-.brand:hover { background: rgba(0, 0, 0, .04); }
-.brand:active { opacity: .7; }
-
-.topbar-right { display: flex; align-items: center; gap: 12px; }
-
-.new-chat {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 13px;
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--ink-2);
-  font: inherit; font-size: 13px; font-weight: 500;
-  cursor: pointer; white-space: nowrap;
-  transition: border-color .15s ease, color .15s ease, background .15s ease;
-}
-.new-chat:hover {
-  border-color: var(--wire);
-  color: var(--wire);
-  background: rgba(0, 0, 0, .02);
-}
-.new-chat svg { stroke: currentColor; }
-
-/* Скрытие стартового экрана без удаления из DOM —
-   чтобы можно было показать его обратно по «Новый чат». */
-.empty.hidden { display: none; }
+.brand { display: flex; align-items: center; gap: 11px; }
 
 .brand-glyph {
   width: 30px; height: 30px;
@@ -531,9 +498,4 @@ details.steps[open] summary::before { content: "▾ "; }
   .empty h1 { font-size: 22px; }
   .bubble { max-width: 90%; }
   .status .chip.hide-sm { display: none; }
-  /* На узких экранах у кнопки оставляем только «+», текст прячем. */
-  .new-chat { padding: 7px; }
-  .new-chat .nc-label { display: none; }
-  /* Подпись под логотипом тоже лишняя на мобиле — экономим место. */
-  .brand-sub { display: none; }
 }
