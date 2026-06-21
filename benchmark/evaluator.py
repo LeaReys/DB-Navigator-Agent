@@ -24,30 +24,25 @@ _EVAL_MUTATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# =============================================================
-# expected_tools → шаги в AgentState.steps
-#
-# steps содержат строки вида "search_metadata", "get_schema:not_found",
-# "generate_sql:success", "execute_query:success", "execute_query:no_sql"
-# =============================================================
 
-_TOOL_TO_STEP_PREFIX: dict[str, list[str]] = {
-    "metadata_search": ["search_metadata"],
-    "schema_tool":     ["get_schema"],
-    "sql_tool":        ["generate_sql", "execute_query"],
+_TOOL_TO_RESULT_NAMES: dict[str, list[str]] = {
+    "metadata_search":  ["search_metadata"],
+    "schema_tool":      ["get_table_schema"],
+    "sql_tool":         ["generate_sql", "execute_query"],
 }
+
+
+def _tools_used(state: dict) -> list[str]:
+    return state.get("tools_used", [])
 
 
 def _steps_used(state: dict) -> list[str]:
     return state.get("steps", [])
 
 
-def _tool_was_called(tool: str, steps: list[str]) -> bool:
-    prefixes = _TOOL_TO_STEP_PREFIX.get(tool, [tool])
-    return any(
-        any(step.startswith(prefix) for prefix in prefixes)
-        for step in steps
-    )
+def _tool_was_called(tool: str, tools_used: list[str]) -> bool:
+    result_names = _TOOL_TO_RESULT_NAMES.get(tool, [tool])
+    return any(name in tools_used for name in result_names)
 
 
 def _sql_was_executed(steps: list[str]) -> bool:
@@ -82,6 +77,7 @@ class CaseResult:
     # поля для метрик
     got_query_type:  str = ""
     steps_executed:  list[str] = field(default_factory=list)
+    tools_used:      list[str] = field(default_factory=list)
     latency_s:       float = 0.0
     error:           str | None = None  # Python-ошибка при запуске кейса
 
@@ -98,6 +94,7 @@ class CaseResult:
             "passed":           self.passed,
             "got_query_type":   self.got_query_type,
             "steps_executed":   self.steps_executed,
+            "tools_used":       self.tools_used,
             "latency_s":        self.latency_s,
             "error":            self.error,
             "failed_criteria":  self.failed_criteria,
@@ -133,10 +130,14 @@ def _check_correct_tool_call(case: dict, state: dict) -> CriterionResult:
     if not expected_tools:
         return CriterionResult("correct_tool_call", True, "no tools expected")
 
-    steps   = _steps_used(state)
-    missing = [t for t in expected_tools if not _tool_was_called(t, steps)]
-    passed  = len(missing) == 0
-    detail  = (f"missing={missing}, steps={steps}") if not passed else f"steps={steps}"
+    tools_used = _tools_used(state)
+    missing    = [t for t in expected_tools if not _tool_was_called(t, tools_used)]
+    passed     = len(missing) == 0
+    detail = (
+        f"missing={missing}, tools_used={tools_used}"
+        if not passed else
+        f"tools_used={tools_used}"
+    )
     return CriterionResult("correct_tool_call", passed, detail)
 
 
@@ -320,5 +321,6 @@ def evaluate(case: dict, state: dict, latency_s: float) -> CaseResult:
         criteria_results = criteria_results,
         got_query_type   = str(final.query_type) if final else "none",
         steps_executed   = state.get("steps", []),
+        tools_used       = state.get("tools_used", []),
         latency_s        = latency_s,
     )

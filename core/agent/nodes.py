@@ -37,6 +37,13 @@ def _add_step(step: str) -> list[str]:
     return [step]
 
 
+def _add_tool(tool_name: str) -> list[str]:
+    """
+    Возвращает список с одним именем tool-функции для tools_used.
+    """
+    return [tool_name]
+
+
 def _default_target() -> tuple[str, str]:
     """
     (server_alias, database) первого сервера из конфига -
@@ -122,6 +129,7 @@ def search_metadata_node(state: AgentState) -> dict:
     return {
         "metadata_result": result,
         "steps": _add_step("search_metadata"),
+        "tools_used": _add_tool(result.tool_name),
     }
 
 
@@ -151,9 +159,13 @@ def get_schema_node(state: AgentState) -> dict:
 
     mentioned = classification.mentioned_tables if classification else []
 
+    # Все вызовы попадают в tools_used, чтобы фиксировать реальное использование инструментов.
+    tools_called: list[str] = []
+
     def _resolve_via_rag() -> tuple[str, str, str] | None:
         """Ищет таблицу через RAG. Возвращает (table, server, database) или None."""
         meta = search_metadata(query, top_k=1)
+        tools_called.append(meta.tool_name)
         if meta.chunks:
             top = meta.chunks[0]
             return top.table_name, top.server, top.database
@@ -165,6 +177,7 @@ def get_schema_node(state: AgentState) -> dict:
         server, database  = _default_target()
 
         result = get_table_schema(server, database, table)
+        tools_called.append(result.tool_name)
 
         # Если таблица не найдена. Пробуем разрешить через RAG.
         if result.status in (ToolStatus.EMPTY, ToolStatus.ERROR):
@@ -177,12 +190,14 @@ def get_schema_node(state: AgentState) -> dict:
                 table, server, database = resolved
                 logger.info(f"[get_schema] RAG разрешил: '{table}'")
                 result = get_table_schema(server, database, table)
+                tools_called.append(result.tool_name)
     else:
         # Таблица не названа явно - сразу идём в RAG
         resolved = _resolve_via_rag()
         if resolved:
             table, server, database = resolved
             result = get_table_schema(server, database, table)
+            tools_called.append(result.tool_name)
         else:
             result = TableSchemaResult(
                 status    = ToolStatus.EMPTY,
@@ -190,13 +205,21 @@ def get_schema_node(state: AgentState) -> dict:
                 server    = "", database = "", table = "",
                 error_msg = "Не удалось определить таблицу из запроса",
             )
-            return {"schema_result": result, "steps": _add_step("get_schema:not_found")}
+            return {
+                "schema_result": result,
+                "steps": _add_step("get_schema:not_found"),
+                "tools_used": tools_called,
+            }
 
     logger.info(
         f"[get_schema] {result.table}: "
         f"{len(result.columns)} колонок, статус={result.status}"
     )
-    return {"schema_result": result, "steps": _add_step("get_schema")}
+    return {
+        "schema_result": result,
+        "steps": _add_step("get_schema"),
+        "tools_used": tools_called,
+    }
 
 
 # ===============================
@@ -213,10 +236,12 @@ def generate_sql_node(state: AgentState) -> dict:
     query = state["user_query"]
     logger.info(f"[generate_sql] '{query}'")
  
-    # Обогащаем контекст если нет metadata_result (DATA-ветка)
+    # Обогащаем контекст если нет metadata_result (DATA-ветка).
     current_state = dict(state)
+    tools_called: list[str] = []
     if not current_state.get("metadata_result"):
         meta = search_metadata(query, top_k=3)
+        tools_called.append(meta.tool_name)
         if meta.chunks:
             current_state["metadata_result"] = meta
  
@@ -258,6 +283,7 @@ def generate_sql_node(state: AgentState) -> dict:
         "sql_result":      result,
         "metadata_result": current_state.get("metadata_result"),
         "steps":           _add_step(f"generate_sql:{result.status}"),
+        "tools_used":      tools_called,
     }
 
 
@@ -289,6 +315,7 @@ def execute_query_node(state: AgentState) -> dict:
     return {
         "execute_result": result,
         "steps": _add_step(f"execute_query:{result.status}"),
+        "tools_used": _add_tool(result.tool_name),
     }
 
 

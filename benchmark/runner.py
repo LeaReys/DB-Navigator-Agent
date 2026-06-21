@@ -233,7 +233,7 @@ def run_benchmark(
             if use_langfuse and lf_enabled():
                 state = run_traced(case["input"], session_id=session_id, graph=graph)
             else:
-                state = graph.invoke({"user_query": case["input"], "steps": []})
+                state = graph.invoke({"user_query": case["input"], "steps": [], "tools_used": []})
         except Exception as e:
             error = str(e)
 

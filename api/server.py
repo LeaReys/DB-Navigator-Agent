@@ -149,7 +149,7 @@ def _run_stream(query: str, session_id: str) -> Iterator[str]:
     from core.observability.tracer import get_handler, flush
 
     graph = get_graph()
-    initial_state = {"user_query": query, "steps": []}
+    initial_state = {"user_query": query, "steps": [], "tools_used": []}
 
     handler = get_handler(session_id, query, tags=["web"])
     config = None
