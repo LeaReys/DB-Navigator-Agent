@@ -43,8 +43,9 @@ class AgentState(TypedDict, total=False):
     final_response:  AgentResponse
 
     # = Служебные поля ====================
-    error: str | None                    # текст ошибки, если что-то пошло не так
-    steps: Annotated[list[str], add]     # трейс шагов
+    error: str | None                       # текст ошибки, если что-то пошло не так
+    steps: Annotated[list[str], add]        # трейс шагов графа (имена узлов, для UI/CLI/трейсинга)
+    tools_used: Annotated[list[str], add]   # трейс РЕАЛЬНЫХ вызовов tool-функций (для benchmark)
 
     # = SQL self-correction loop ==========
     sql_retry_count: int                # сколько раз мы уже пытались исправить SQL

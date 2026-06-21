@@ -218,6 +218,7 @@ def run_traced(
     initial_state: AgentState = {
         "user_query": user_query,
         "steps":      [],
+        "tools_used": [],
     }
 
     handler = get_handler(session_id, user_query, tags=tags)
