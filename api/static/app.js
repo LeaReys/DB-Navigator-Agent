@@ -9,6 +9,7 @@ const input   = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const statusEl = document.getElementById("status");
 const emptyEl = document.getElementById("empty");
+const homeBtn = document.getElementById("homeBtn");
 
 let sessionId = null;
 let busy = false;
@@ -288,6 +289,10 @@ function handleEvent(ev, run, rail) {
 }
 
 /* ----------------------------- события UI ----------------------------- */
+
+homeBtn?.addEventListener("click", () => {
+  window.location.reload();
+});
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();

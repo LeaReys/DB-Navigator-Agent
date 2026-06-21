@@ -83,6 +83,24 @@ body {
 
 .brand { display: flex; align-items: center; gap: 11px; }
 
+.brand-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 10px;
+}
+.brand-button:hover .wordmark,
+.brand-button:focus-visible .wordmark { color: var(--wire-ink); }
+.brand-button:focus-visible {
+  outline: 3px solid var(--wire-soft);
+  outline-offset: 4px;
+}
+.brand-button:active { transform: translateY(1px); }
+
 .brand-glyph {
   width: 30px; height: 30px;
   fill: var(--wire);
