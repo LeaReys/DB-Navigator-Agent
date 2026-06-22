@@ -7,6 +7,8 @@
 Ключевые решения:
   - Пул подключений: одно подключение на пару (server, database),
     переиспользуем его вместо открытия нового каждый раз
+  - Пул - thread-local: у каждого потока свой словарь подключений,
+    физически недостижимый из других потоков.
   - Контекстный менеджер: подключение автоматически закрывается
     при ошибке
   - Read-only guard: блокируем мутирующие операторы на уровне
@@ -16,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Any, Generator
 
@@ -51,13 +54,24 @@ class DBConnector:
     """
 
     def __init__(self) -> None:
-        # Кеш открытых подключений: ключ = (server_alias, database_name)
-        self._pool: dict[tuple[str, str], pyodbc.Connection] = {}
+        # хранит произвольные атрибуты отдельно для каждого потока:
+        self._local = threading.local()
+
+        # Реестр ВСЕХ созданных соединений во всех потоках - нужен
+        # только для close_all() на остановке приложения.
+        self._registry: dict[tuple[int, tuple[str, str]], pyodbc.Connection] = {}
+        self._registry_lock = threading.Lock()
 
         # Индекс серверов по alias для быстрого доступа
         self._servers: dict[str, ServerConfig] = {
             s.alias: s for s in settings.servers
         }
+
+    def _get_local_pool(self) -> dict[tuple[str, str], pyodbc.Connection]:
+        """Возвращает пул подключений текущего потока, создавая его при первом обращении."""
+        if not hasattr(self._local, "pool"):
+            self._local.pool = {}
+        return self._local.pool
 
     # == Поиск конфигурации ====================================
 
@@ -87,33 +101,51 @@ class DBConnector:
         self, server_alias: str, database: str
     ) -> pyodbc.Connection:
         """
-        Возвращает существующее подключение из пула или создаёт новое.
-        Проверяет живость соединения перед возвратом.
+        Возвращает существующее подключение из пула текущего потока
+        или создаёт новое. Проверяет живость соединения перед возвратом.
         """
-        key = (server_alias, database)
+        key  = (server_alias, database)
+        pool = self._get_local_pool()
 
-        # Проверяем, жив ли кешированный коннект
-        if key in self._pool:
+        # Проверяем, жив ли кешированный коннект (в пуле этого потока)
+        if key in pool:
             try:
-                self._pool[key].execute("SELECT 1")  # ping
-                return self._pool[key]
+                pool[key].execute("SELECT 1")  # ping
+                return pool[key]
             except pyodbc.Error:
                 logger.warning(f"Подключение {key} умерло, переподключаемся...")
-                del self._pool[key]
+                self._drop_from_registry(key, pool.pop(key))
 
         # Создаём новое подключение
         config = self.get_server_config(server_alias)
         conn_str = config.get_connection_string(database)
 
-        logger.debug(f"Открываем подключение: {server_alias}/{database}")
+        logger.debug(f"Открываем подключение: {server_alias}/{database} [thread={threading.get_ident()}]")
         conn = pyodbc.connect(
             conn_str,
             timeout=settings.query_timeout,
         )
         conn.autocommit = True   # важно для read-only режима
 
-        self._pool[key] = conn
+        pool[key] = conn
+        self._register(key, conn)
         return conn
+
+    def _register(self, key: tuple[str, str], conn: pyodbc.Connection) -> None:
+        """Добавляет соединение в общий реестр (для close_all)."""
+        registry_key = (threading.get_ident(), key)
+        with self._registry_lock:
+            self._registry[registry_key] = conn
+
+    def _drop_from_registry(self, key: tuple[str, str], conn: pyodbc.Connection) -> None:
+        """Закрывает соединение и убирает его из общего реестра."""
+        registry_key = (threading.get_ident(), key)
+        with self._registry_lock:
+            self._registry.pop(registry_key, None)
+        try:
+            conn.close()
+        except pyodbc.Error:
+            pass
 
     @contextmanager
     def get_connection(
@@ -130,10 +162,14 @@ class DBConnector:
         try:
             yield conn
         except pyodbc.Error as e:
-            # При ошибке убираем подключение из пула — следующий запрос
-            # создаст новое
+            # При ошибке убираем подключение из пула текущего потока и
+            # из общего реестра — следующий вызов в этом потоке создаст
+            # новое соединение.
             key = (server_alias, database)
-            self._pool.pop(key, None)
+            pool = self._get_local_pool()
+            stale = pool.pop(key, None)
+            if stale is not None:
+                self._drop_from_registry(key, stale)
             raise ConnectorError(f"Ошибка БД [{server_alias}/{database}]: {e}") from e
 
     # == Выполнение запросов ===================================
@@ -219,14 +255,21 @@ class DBConnector:
     # == Закрытие =============================================
 
     def close_all(self) -> None:
-        """Закрывает все подключения в пуле. Вызывать при завершении."""
-        for key, conn in self._pool.items():
+        """
+        Закрывает все подключения во всех потоках. Вызывать при завершении.
+
+        Реестр - единственное общее место, где видны соединения всех потоков сразу.
+        """
+        with self._registry_lock:
+            items = list(self._registry.items())
+            self._registry.clear()
+
+        for (thread_id, key), conn in items:
             try:
                 conn.close()
-                logger.debug(f"Закрыто подключение: {key}")
+                logger.debug(f"Закрыто подключение: {key} [thread={thread_id}]")
             except pyodbc.Error:
                 pass
-        self._pool.clear()
 
 
 # Единственный экземпляр коннектора для всего приложения (singleton)
