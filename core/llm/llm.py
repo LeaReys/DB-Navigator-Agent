@@ -6,8 +6,8 @@
   - Ollama (ChatOllama) - для локальной разработки без интернета
 
 Переключение через .env:
-  USE_OLLAMA=false  → OpenRouter  (по умолчанию)
-  USE_OLLAMA=true   → Ollama
+  USE_OLLAMA=false  -> OpenRouter  (по умолчанию)
+  USE_OLLAMA=true   -> Ollama
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def invoke_with_retry(chain: Any, messages: list, node: str = "") -> Any:
 
         except Exception as exc:
             if not _is_rate_limit(exc):
-                raise  # не 429 - не трогаем, пробрасываем сразу
+                raise       # не 429 - не трогаем, пробрасываем сразу
 
             last_exc = exc
             retry_after = _extract_retry_after(exc)
