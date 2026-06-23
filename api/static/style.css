@@ -81,7 +81,21 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.brand { display: flex; align-items: center; gap: 11px; }
+.brand {
+  display: flex; align-items: center; gap: 11px;
+  text-decoration: none;        /* сбрасываем подчёркивание <a> */
+  color: inherit;                /* сбрасываем цвет ссылки браузера по умолчанию */
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 4px 6px;
+  transition: background-color .15s ease, opacity .15s ease;
+}
+.brand:hover { background-color: var(--line); }
+.brand:active { opacity: .7; }
+.brand:focus-visible {
+  outline: 2px solid var(--wire);
+  outline-offset: 2px;
+}
 
 .brand-glyph {
   width: 30px; height: 30px;
