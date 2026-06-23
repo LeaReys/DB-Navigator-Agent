@@ -1,8 +1,8 @@
 """
 Поиск таблиц и колонок по запросу.
 
-Fallback: если индекс не построен (retriever не готов) —
-  автоматически возвращаемся к SQL LIKE поиску.
+Fallback: если индекс не построен (retriever не готов),
+то автоматически возвращаемся к SQL LIKE поиску.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ def search_metadata(
     Ищет релевантные таблицы и колонки по запросу пользователя.
 
     Использует ChromaDB.
-    При недоступном индексе — fallback на SQL LIKE поиск.
+    При недоступном индексе - fallback на SQL LIKE поиск.
 
     Returns:
         MetadataSearchResult со списком найденных таблиц
@@ -39,12 +39,12 @@ def search_metadata(
         if retriever.is_ready():
             return _vector_search(retriever, query, top_k)
         else:
-            logger.warning("Индекс пустой — fallback на SQL поиск")
+            logger.warning("Индекс пустой - fallback на SQL поиск")
             return _sql_fallback_search(query, top_k)
 
     except RuntimeError as e:
-        # Индекс не построен — используем SQL поиск
-        logger.warning(f"RAG недоступен ({e}) — fallback на SQL поиск")
+        # Индекс не построен - используем SQL поиск
+        logger.warning(f"RAG недоступен ({e}) - fallback на SQL поиск")
         return _sql_fallback_search(query, top_k)
 
     except Exception as e:
@@ -77,7 +77,7 @@ def _vector_search(
             chunks    = [],
         )
 
-    logger.info(f"[vector_search] '{query}' → {len(chunks)} результатов")
+    logger.info(f"[vector_search] '{query}' -> {len(chunks)} результатов")
 
     return MetadataSearchResult(
         status    = ToolStatus.SUCCESS,
@@ -132,7 +132,7 @@ def _sql_fallback_search(
     top_k: int | None,
 ) -> MetadataSearchResult:
     """
-    SQL LIKE поиск — fallback при недоступном векторном индексе.
+    SQL LIKE поиск - fallback при недоступном векторном индексе.
     """
     from core.config import settings
     from core.db.connector import connector, ConnectorError

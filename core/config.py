@@ -31,7 +31,7 @@ class ServerConfig(BaseModel):
     driver:    str = "ODBC Driver 17 for SQL Server"
     databases: list[DatabaseConfig] = Field(default_factory=list)
 
-    # Если используется Windows Auth — оставь пустыми
+    # Если используется Windows Auth - оставь пустыми
     username: str = ""
     password: str = ""
 
@@ -83,10 +83,10 @@ class Settings(BaseSettings):
     )
 
     ollama_model_small: str = Field(
-        default="llama3.1:8b",          # qwen2.5:3b
+        default="llama3.1:8b",
         validation_alias="OLLAMA_MODEL_SMALL",
     )
-    ollama_model_large: str = Field(    # qwen2.5-coder:7b
+    ollama_model_large: str = Field(
         default="deepseek-coder-v2:16b",
         validation_alias="OLLAMA_MODEL_LARGE",
     )
@@ -96,11 +96,11 @@ class Settings(BaseSettings):
     )
 
     # == LLM ==================================================
-    # USE_OLLAMA=true  → локальная Ollama
-    # USE_OLLAMA=false → OpenRouter
+    # USE_OLLAMA=true  -> локальная Ollama
+    # USE_OLLAMA=false -> OpenRouter
     use_ollama: bool = Field(default=False, validation_alias="USE_OLLAMA")
 
-    # Макс. кол-во токенов в ответе от LLM — важно для контроля затрат и предотвращения слишком длинных ответов.
+    # Макс. кол-во токенов в ответе от LLM - важно для контроля затрат и предотвращения слишком длинных ответов.
     llm_max_tokens: int = Field(default=8000, validation_alias="LLM_MAX_TOKENS")
     
     # LLM retry при 429
@@ -144,7 +144,7 @@ class Settings(BaseSettings):
  
     @property
     def active_provider(self) -> str:
-        """Имя активного провайдера — для логов и UI."""
+        """Имя активного провайдера - для логов и UI."""
         return "ollama" if self.use_ollama else "openrouter"
 
 
@@ -152,7 +152,7 @@ def _build_default_settings() -> Settings:
     """
     Создаёт настройки по умолчанию.
     
-    Серверы и БД читаем из переменных окружения — 
+    Серверы и БД читаем из переменных окружения - 
     так проще менять конфигурацию без изменения кода.
     
     Формат переменных окружения:
@@ -209,9 +209,9 @@ def _build_default_settings() -> Settings:
 settings = _build_default_settings()
 
 
-# Централизованно прокидываем HF_TOKEN в стандартные переменные окружения,
-# которые читает huggingface_hub. Делаем это здесь — в единой точке загрузки
-# конфига, — чтобы остальные модули (RAG) не дублировали эту логику.
+# Централизованно прокидываем HF_TOKEN в стандартные переменные окружения 
+# (для huggingface_hub). Через единую точку загрузки конфига, чтобы 
+# остальные модули (RAG) не дублировали эту логику.
 if settings.hf_token:
     for _hf_var in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
         os.environ.setdefault(_hf_var, settings.hf_token)

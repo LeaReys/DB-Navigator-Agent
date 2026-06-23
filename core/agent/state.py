@@ -4,9 +4,9 @@
 LangGraph передаёт этот объект от узла к узлу.
 Каждый узел читает нужные поля и дописывает свои результаты.
 
-Мы используем TypedDict (требование LangGraph), но внутри
-храним Pydantic-модели из models.py — так получаем
-и совместимость с LangGraph, и валидацию данных.
+TypedDict (требование LangGraph), но внутри Pydantic-модели 
+из models.py - так получаем и совместимость с LangGraph, и 
+валидацию данных.
 """
 
 from __future__ import annotations
@@ -24,9 +24,8 @@ from core.schemas.models import (
 
 class AgentState(TypedDict, total=False):
     """
-    total=False означает, что все поля опциональны по умолчанию.
-    Это нужно потому что LangGraph создаёт стейт постепенно —
-    каждый узел добавляет только свои поля.
+    total=False - все поля опциональны по умолчанию, стейт 
+    сзаполняется постепенно - каждый узел добавляет только свои поля.
     """
 
     # = Вход =========================
@@ -48,4 +47,4 @@ class AgentState(TypedDict, total=False):
     tools_used: Annotated[list[str], add]   # трейс РЕАЛЬНЫХ вызовов tool-функций (для benchmark)
 
     # = SQL self-correction loop ==========
-    sql_retry_count: int                # сколько раз мы уже пытались исправить SQL
+    sql_retry_count: int                    # сколько раз мы уже пытались исправить SQL

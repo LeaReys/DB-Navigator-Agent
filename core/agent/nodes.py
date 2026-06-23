@@ -279,6 +279,9 @@ def generate_sql_node(state: AgentState) -> dict:
             error_msg=f"Ошибка генерации SQL: {e}",
         )
  
+    # Фиксируем факт вызова инструмента генерации SQL.
+    tools_called.append("generate_sql")
+
     return {
         "sql_result":      result,
         "metadata_result": current_state.get("metadata_result"),
@@ -496,10 +499,10 @@ def format_response_node(state: AgentState) -> dict:
         response = invoke_with_retry(
             get_llm("small"),
             [
-                SystemMessage(content=get_format_system(query_type)),   # ← тип-специфичный промпт
+                SystemMessage(content=get_format_system(query_type)),   #  тип-специфичный промпт
                 HumanMessage(content=FORMAT_USER.format(
                     query=query,
-                    query_type=str(query_type),                          # ← передаём тип в контекст
+                    query_type=str(query_type),                         #  передаём тип в контекст
                     results_context=build_results_context(state),
                 )),
             ],
@@ -508,7 +511,7 @@ def format_response_node(state: AgentState) -> dict:
         answer = response.content.strip()
     except Exception as e:
         logger.error(f"[format_response] LLM error: {e}")
-        answer = build_results_context(state)  # текстовый fallback
+        answer = build_results_context(state)                           # текстовый fallback
 
     sources, sql_text, has_data = _collect_response_metadata(state)
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 
-# Логгеры-родители для всего нашего кода. Все модули приложения — их потомки.
+# Логгеры-родители для всего нашего кода. Все модули приложения - их потомки.
 APP_LOGGERS = ("core", "api")
 
 _LOG_FORMAT = "%(levelname)s: %(message)s"

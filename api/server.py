@@ -6,13 +6,13 @@ FastAPI-сервер DB Navigator Agent.
   GET  /api/health       → конфигурация и доступность LLM / БД / RAG / LangFuse
   POST /api/chat         → запуск агента со стримингом шагов (Server-Sent Events)
 
-Сервер НЕ содержит логики агента: он переиспускает build_graph() из agent.graph
-и стримит обновления узлов через web.events. Тот же граф работает в CLI (app.py),
+Сервер НЕ содержит логики агента: он переиспользует build_graph() из agent.graph
+и стримит обновления узлов через api.events. Тот же граф работает в CLI (app.py),
 поэтому поведение в браузере и в консоли совпадает, а трейсы по-прежнему уходят
 в LangFuse через тот же callback-handler.
 
 Запуск:
-  uvicorn web.server:app --host 0.0.0.0 --port 8000
+  uvicorn api.server:app --host 0.0.0.0 --port 8000
 """
 
 from __future__ import annotations
