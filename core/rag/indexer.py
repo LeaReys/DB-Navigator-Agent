@@ -7,8 +7,8 @@
 Когда запускать:
   - Первый запуск проекта
   - После значительных изменений в схеме БД
-  - После правки domain_knowledge.yaml  ← не забудьте --force
-  - По расписанию (например, раз в неделю)
+  - После правки domain_knowledge.yaml  <- запускать с  --force
+  - По расписанию (например, раз в неделю) - для дальнейшей реализации в проде
 
 Индекс сохраняется на диск (chroma_persist_dir из конфига),
 поэтому повторный запуск агента не переиндексирует БД заново.
@@ -104,7 +104,7 @@ class SchemaIndexer:
     def __init__(self) -> None:
         self._client     = self._init_chroma()
         self._collection = self._get_or_create_collection()
-        self._kb         = self._load_knowledge_base()  # ДОБАВЛЕНО: загружаем доменные знания
+        self._kb         = self._load_knowledge_base()
 
     # == Загрузка доменных знаний ==============================
 
@@ -163,10 +163,6 @@ class SchemaIndexer:
         Args:
             force: если True - удаляет старый индекс и строит заново.
                    По умолчанию пропускает уже проиндексированные таблицы.
-
-                   Запускайте с --force всегда, когда:
-                     - правили domain_knowledge.yaml
-                     - добавили/изменили MS_Description в БД
 
         Returns:
             Словарь со статистикой: {"indexed": N, "skipped": N, "errors": N}
@@ -270,8 +266,8 @@ class SchemaIndexer:
         """
         Строит текстовый документ из метаданных таблицы.
         Источники данных:
-          - sys.tables / sys.columns / MS_Description → факты из БД
-          - domain_knowledge.yaml → синонимы и связи (чего нет в схеме)
+          - sys.tables / sys.columns / MS_Description -> факты из БД
+          - domain_knowledge.yaml -> синонимы и связи (чего нет в схеме)
         """
 
         # --- Секция 1: колонки (из БД) ---
@@ -355,7 +351,7 @@ class SchemaIndexer:
         """
         self._collection.upsert(
             ids       = [doc.doc_id],
-            documents = [f"passage: {doc.text}"],   # ← префикс e5
+            documents = [f"passage: {doc.text}"],   # префикс e5
             metadatas = [{
                 "table_name":  doc.table_name,
                 "server":      doc.server,
@@ -388,10 +384,8 @@ def build_index_if_empty(force: bool = False) -> dict:
     """
     Строит индекс, только если он ещё пустой (или force=True).
 
-    Вызывается на старте веб-приложения: в Docker база поднимается рядом,
-    а готового chroma_db в образе нет - поэтому индекс строится один раз
-    при первом запуске. Если БД недоступна - не падаем, а отдаём ошибку
-    в статистике; агент продолжит работать через SQL-fallback.
+    Если БД недоступна - возвращает ошибку; агент продолжит 
+    работать через SQL-fallback.
     """
     indexer = SchemaIndexer()
     if not force and indexer.get_stats()["total_documents"] > 0:

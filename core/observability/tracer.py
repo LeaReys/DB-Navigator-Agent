@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def is_enabled() -> bool:
     """
     True если оба LangFuse ключа заданы в .env.
-    Если False — агент работает нормально, просто без трейсинга.
+    Если False - агент работает без трейсинга.
     """
     from core.config import settings
     return bool(settings.langfuse_public_key and settings.langfuse_secret_key)
@@ -27,7 +27,7 @@ _v3_client = None
 
 
 def _ensure_v3_client():
-    """Инициализирует глобальный клиент LangFuse v3 нашими ключами."""
+    """Инициализирует глобальный клиент LangFuse v3"""
     global _v3_client
     if _v3_client is None:
         from langfuse import Langfuse
@@ -60,14 +60,14 @@ def get_handler(
 
     # --- LangFuse v3 ------------------------------------------------------
     try:
-        from langfuse.langchain import CallbackHandler  # есть только в v3
+        from langfuse.langchain import CallbackHandle       # есть только в v3
     except ImportError:
-        CallbackHandler = None  # type: ignore[assignment]
+        CallbackHandler = None                              # type: ignore[assignment]
 
     if CallbackHandler is not None:
         try:
-            _ensure_v3_client()                 # креды -> глобальный клиент
-            handler = CallbackHandler()         # без аргументов (v3 API)
+            _ensure_v3_client()                             # креды -> глобальный клиент
+            handler = CallbackHandler()                     # без аргументов (v3 API)
             logger.info(f"LangFuse v3 handler создан (session={session_id[:8]}...)")
             return handler
         except Exception as e:  # noqa: BLE001

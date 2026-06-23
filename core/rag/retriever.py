@@ -4,10 +4,8 @@
 Принимает текстовый запрос пользователя, ищет похожие документы
 в ChromaDB и возвращает список MetadataChunk.
 
-Важно: retriever — read-only. Он только читает из индекса, не изменяет его.
-
 Загрузка модели эмбеддингов вынесена в core.rag.embeddings и происходит
-один раз на процесс — retriever и indexer переиспользуют общий объект.
+один раз на процесс - retriever и indexer переиспользуют общий объект.
 """
 
 from __future__ import annotations
@@ -29,16 +27,13 @@ class SchemaRetriever:
     """
     Выполняет семантический поиск по индексу схемы БД.
 
-    Конструктор НИКОГДА не падает, даже если индекс ещё не построен:
-    в этом случае создаётся пустая коллекция, is_ready() вернёт False,
-    а вызывающий код (search_metadata) уйдёт на SQL-fallback.
-    Это снимает прежний баг, когда падение в __init__ заставляло
-    get_retriever() пересоздавать объект и заново грузить модель в цикле.
+    Если индекс ещё не построен: is_ready() вернёт False, а 
+    вызывающий код (search_metadata) уйдёт на SQL-fallback.
     """
 
     def __init__(self) -> None:
         self._client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-        # get_or_create — не бросает исключение, если коллекции ещё нет.
+        # get_or_create - не бросает исключение, если коллекции ещё нет.
         self._collection = self._client.get_or_create_collection(
             name=COLLECTION_NAME,
             embedding_function=get_embedding_function(),
@@ -59,7 +54,7 @@ class SchemaRetriever:
 
         Returns:
             Список MetadataChunk, отсортированный по убыванию релевантности.
-            Если индекс пустой или ничего не найдено — пустой список.
+            Если индекс пустой или ничего не найдено - пустой список.
         """
         limit = top_k if top_k is not None else settings.rag_top_k
 
@@ -70,7 +65,7 @@ class SchemaRetriever:
 
         logger.debug("Поиск: '%s', top_k=%s", query, limit)
 
-        # Префикс "query: " обязателен для модели e5 — без него запрос
+        # Префикс "query: " обязателен для модели e5 - без него запрос
         # эмбеддится в другом «пространстве», чем документы (passage: ...),
         # и косинусное сходство занижается.
         results = self._collection.query(
@@ -95,7 +90,7 @@ class SchemaRetriever:
     ) -> list[MetadataChunk]:
         """
         Преобразует сырой ответ ChromaDB в список MetadataChunk.
-        ChromaDB возвращает distance (меньше — лучше), переводим в similarity.
+        ChromaDB возвращает distance (меньше - лучше), переводим в similarity.
         """
         chunks: list[MetadataChunk] = []
 

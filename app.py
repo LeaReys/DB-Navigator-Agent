@@ -4,7 +4,7 @@ app.py = точка входа DB Navigator Agent.
 Режимы запуска:
   python app.py                        → интерактивный REPL
   python app.py "вопрос"               → одиночный запрос
-  python app.py --bench                → полный benchmark (12 кейсов)
+  python app.py --bench                → полный benchmark (17 кейсов)
   python app.py --bench navigation     → benchmark одной категории
   python app.py --bench --verbose      → с детальным разбором критериев
   python app.py --check                → health check (LLM / БД / RAG / LangFuse)
@@ -51,7 +51,7 @@ _HELP = textwrap.dedent("""
 
     python app.py                        = интерактивный REPL
     python app.py "вопрос"               = одиночный запрос
-    python app.py --bench                = benchmark (все 12 кейсов)
+    python app.py --bench                = benchmark (все 17 кейсов)
     python app.py --bench navigation     = benchmark одной категории
     python app.py --bench --verbose      = с детальным разбором критериев
     python app.py --check                = health check
