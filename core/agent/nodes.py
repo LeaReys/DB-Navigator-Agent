@@ -37,6 +37,13 @@ def _add_step(step: str) -> list[str]:
     return [step]
 
 
+def _add_tool(tool_name: str) -> list[str]:
+    """
+    Возвращает список с одним именем tool-функции для tools_used.
+    """
+    return [tool_name]
+
+
 def _default_target() -> tuple[str, str]:
     """
     (server_alias, database) первого сервера из конфига -
@@ -122,6 +129,7 @@ def search_metadata_node(state: AgentState) -> dict:
     return {
         "metadata_result": result,
         "steps": _add_step("search_metadata"),
+        "tools_used": _add_tool(result.tool_name),
     }
 
 
@@ -151,9 +159,13 @@ def get_schema_node(state: AgentState) -> dict:
 
     mentioned = classification.mentioned_tables if classification else []
 
+    # Все вызовы попадают в tools_used, чтобы фиксировать реальное использование инструментов.
+    tools_called: list[str] = []
+
     def _resolve_via_rag() -> tuple[str, str, str] | None:
         """Ищет таблицу через RAG. Возвращает (table, server, database) или None."""
         meta = search_metadata(query, top_k=1)
+        tools_called.append(meta.tool_name)
         if meta.chunks:
             top = meta.chunks[0]
             return top.table_name, top.server, top.database
@@ -165,6 +177,7 @@ def get_schema_node(state: AgentState) -> dict:
         server, database  = _default_target()
 
         result = get_table_schema(server, database, table)
+        tools_called.append(result.tool_name)
 
         # Если таблица не найдена. Пробуем разрешить через RAG.
         if result.status in (ToolStatus.EMPTY, ToolStatus.ERROR):
@@ -177,12 +190,14 @@ def get_schema_node(state: AgentState) -> dict:
                 table, server, database = resolved
                 logger.info(f"[get_schema] RAG разрешил: '{table}'")
                 result = get_table_schema(server, database, table)
+                tools_called.append(result.tool_name)
     else:
         # Таблица не названа явно - сразу идём в RAG
         resolved = _resolve_via_rag()
         if resolved:
             table, server, database = resolved
             result = get_table_schema(server, database, table)
+            tools_called.append(result.tool_name)
         else:
             result = TableSchemaResult(
                 status    = ToolStatus.EMPTY,
@@ -190,13 +205,21 @@ def get_schema_node(state: AgentState) -> dict:
                 server    = "", database = "", table = "",
                 error_msg = "Не удалось определить таблицу из запроса",
             )
-            return {"schema_result": result, "steps": _add_step("get_schema:not_found")}
+            return {
+                "schema_result": result,
+                "steps": _add_step("get_schema:not_found"),
+                "tools_used": tools_called,
+            }
 
     logger.info(
         f"[get_schema] {result.table}: "
         f"{len(result.columns)} колонок, статус={result.status}"
     )
-    return {"schema_result": result, "steps": _add_step("get_schema")}
+    return {
+        "schema_result": result,
+        "steps": _add_step("get_schema"),
+        "tools_used": tools_called,
+    }
 
 
 # ===============================
@@ -207,15 +230,18 @@ def generate_sql_node(state: AgentState) -> dict:
     Генерирует SQL-скрипт по запросу пользователя.
     """
     from core.llm.llm import get_llm, invoke_with_retry
-    from core.llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER, build_schema_context
+    from core.llm.prompts import GENERATE_SQL_SYSTEM, GENERATE_SQL_USER
+    from core.llm.context_builder import build_schema_context
  
     query = state["user_query"]
     logger.info(f"[generate_sql] '{query}'")
  
-    # Обогащаем контекст если нет metadata_result (DATA-ветка)
+    # Обогащаем контекст если нет metadata_result (DATA-ветка).
     current_state = dict(state)
+    tools_called: list[str] = []
     if not current_state.get("metadata_result"):
         meta = search_metadata(query, top_k=3)
+        tools_called.append(meta.tool_name)
         if meta.chunks:
             current_state["metadata_result"] = meta
  
@@ -257,6 +283,7 @@ def generate_sql_node(state: AgentState) -> dict:
         "sql_result":      result,
         "metadata_result": current_state.get("metadata_result"),
         "steps":           _add_step(f"generate_sql:{result.status}"),
+        "tools_used":      tools_called,
     }
 
 
@@ -288,6 +315,7 @@ def execute_query_node(state: AgentState) -> dict:
     return {
         "execute_result": result,
         "steps": _add_step(f"execute_query:{result.status}"),
+        "tools_used": _add_tool(result.tool_name),
     }
 
 
@@ -302,7 +330,8 @@ def fix_sql_node(state: AgentState) -> dict:
     статус ERROR и лимит попыток не исчерпан.
     """
     from core.llm.llm import get_llm, invoke_with_retry
-    from core.llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER, build_schema_context
+    from core.llm.prompts import FIX_SQL_SYSTEM, FIX_SQL_USER
+    from core.llm.context_builder import build_schema_context
 
     query          = state["user_query"]
     sql_result     = state.get("sql_result")
@@ -389,6 +418,27 @@ def unsafe_query_node(state: AgentState) -> dict:
 # ===============================
 # УЗЕЛ 7: Форматирование финального ответа
 # ===============================
+def _derive_error(state: AgentState) -> str | None:
+    """
+    Вычисляет текст ошибки агента из result-объектов (error_msg) стейта.
+    Для отображения текста ошибки пользователю или None, если сбоев нет.
+    """
+    sql_result = state.get("sql_result")
+    if sql_result and sql_result.status == ToolStatus.ERROR:
+        return sql_result.error_msg or "Ошибка генерации SQL"
+
+    execute_result = state.get("execute_result")
+    if execute_result and execute_result.status == ToolStatus.ERROR:
+        return execute_result.error_msg or "Ошибка выполнения запроса"
+
+    # Таблица не найдена: status EMPTY, но с заполненным error_msg
+    schema_result = state.get("schema_result")
+    if schema_result and schema_result.error_msg:
+        return schema_result.error_msg
+
+    return None
+
+
 def _collect_response_metadata(
     state: AgentState,
 ) -> tuple[list[SourceReference], str | None, bool]:
@@ -427,11 +477,18 @@ def format_response_node(state: AgentState) -> dict:
     Fallback - собирает ответ из контекста без LLM.
     """
     from core.llm.llm import get_llm, invoke_with_retry
-    from core.llm.prompts import get_format_system, FORMAT_USER, build_results_context
+    from core.llm.prompts import FORMAT_USER
+    from core.llm.context_builder import get_format_system, build_results_context
 
     query          = state.get("user_query", "")
     classification = state.get("classification")
     query_type     = classification.query_type if classification else QueryType.UNKNOWN
+
+    # Вычисляем ошибку агента из result-объектов.
+    error = _derive_error(state)
+    if error:
+        state = {**state, "error": error}
+        logger.info(f"[format_response] обнаружена ошибка агента: {error}")
 
     logger.info(f"[format_response] тип={query_type}")
 
@@ -461,7 +518,11 @@ def format_response_node(state: AgentState) -> dict:
         confidence=classification.confidence if classification else 0.0,
         has_data=has_data,
     )
-    return {"final_response": final, "steps": _add_step("format_response")}
+    return {
+        "final_response": final,
+        "error": error,
+        "steps": _add_step("format_response"),
+    }
 
 # ===============================
 # УЗЕЛ-ЗАГЛУШКА: обработка неизвестного запроса

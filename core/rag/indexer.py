@@ -111,7 +111,7 @@ class SchemaIndexer:
     def _load_knowledge_base(self) -> dict:
         """
         Загружает domain_knowledge.yaml - файл с доп.знаниями о БД.
-        Если файл не найден — работаем без него (только схема из БД).
+        Если файл не найден - работаем без него (только схема из БД).
         """
         if not _KNOWLEDGE_FILE.exists():
             logger.warning(
@@ -161,7 +161,7 @@ class SchemaIndexer:
         Запускает полную индексацию всех серверов и БД из конфига.
 
         Args:
-            force: если True — удаляет старый индекс и строит заново.
+            force: если True - удаляет старый индекс и строит заново.
                    По умолчанию пропускает уже проиндексированные таблицы.
 
                    Запускайте с --force всегда, когда:
@@ -212,7 +212,7 @@ class SchemaIndexer:
             stats["errors"] += 1
             return stats
 
-        # Если задан whitelist таблиц — фильтруем
+        # Если задан whitelist таблиц - фильтруем
         whitelist = set(db_config.tables_to_index)
 
         for table_row in tables:
@@ -307,20 +307,20 @@ class SchemaIndexer:
             f"Описание: {table_desc or 'нет описания'}",
         ]
 
-        # Бизнес-смысл и синонимы — первыми после базовой инфо,
+        # Бизнес-смысл и синонимы - первыми после базовой инфо,
         # чтобы они весомо влияли на вектор
         if biz_desc:
             lines.append(f"Бизнес-смысл: {biz_desc}")
         if synonyms:
             lines.append(f"Синонимы и бизнес-термины: {', '.join(synonyms)}")
 
-        # Связи — важны для SQL-генерации и навигационных запросов
+        # Связи - важны для SQL-генерации и навигационных запросов
         if relationships:
             lines.append("Связи с другими таблицами:")
             for rel in relationships:
                 lines.append(f"  {rel}")
 
-        # Enum-поля — если есть статусы/коды, описываем как их читать
+        # Enum-поля - если есть статусы/коды, описываем как их читать
         if enum_fields:
             lines.append("Поля-справочники (enum):")
             for field_name, field_info in enum_fields.items():
@@ -389,16 +389,16 @@ def build_index_if_empty(force: bool = False) -> dict:
     Строит индекс, только если он ещё пустой (или force=True).
 
     Вызывается на старте веб-приложения: в Docker база поднимается рядом,
-    а готового chroma_db в образе нет — поэтому индекс строится один раз
-    при первом запуске. Если БД недоступна — не падаем, а отдаём ошибку
+    а готового chroma_db в образе нет - поэтому индекс строится один раз
+    при первом запуске. Если БД недоступна - не падаем, а отдаём ошибку
     в статистике; агент продолжит работать через SQL-fallback.
     """
     indexer = SchemaIndexer()
     if not force and indexer.get_stats()["total_documents"] > 0:
-        logger.info("RAG-индекс уже построен — пропускаем индексацию.")
+        logger.info("RAG-индекс уже построен - пропускаем индексацию.")
         return {"indexed": 0, "skipped": 0, "errors": 0, "already_built": True}
 
-    logger.info("RAG-индекс пуст — запускаем индексацию схемы БД…")
+    logger.info("RAG-индекс пуст - запускаем индексацию схемы БД…")
     return indexer.run(force=force)
 
 
@@ -410,10 +410,10 @@ if __name__ == "__main__":
     import json
     import sys
 
-    # .env уже загружается при импорте core.config — отдельный load_dotenv не нужен.
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    from core.logging_config import setup_logging
+    setup_logging()
 
-    print("=== DB Navigator — индексация схемы БД ===\n")
+    print("=== DB Navigator - индексация схемы БД ===\n")
 
     indexer = SchemaIndexer()
 

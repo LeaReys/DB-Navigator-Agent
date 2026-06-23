@@ -173,3 +173,15 @@ class AgentResponse(BaseModel):
     has_data:    bool  = False  # True если вернулись реальные данные из БД
 
     model_config = {"use_enum_values": True}
+
+# =============================================
+# 4. ВЕРДИКТ LLM-СУДЬИ (eval / benchmark)
+# =============================================
+
+class JudgeVerdict(BaseModel):
+    """
+    Вердикт LLM-as-judge: оценивает, отвечает ли ответ агента на вопрос
+    пользователя по существу. Используется в benchmark/evaluator.py.
+    """
+    passed:    bool = Field(description="True, если ответ по существу отвечает на вопрос")
+    reasoning: str  = Field(description="Краткое обоснование вердикта (1-2 предложения)")

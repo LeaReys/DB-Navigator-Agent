@@ -36,10 +36,9 @@ from pydantic import BaseModel
 
 from api.events import node_event, final_event
 
-logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-for name in ("agent", "llm", "observability", "web", "core"):
-    logging.getLogger(name).setLevel(logging.INFO)
-logger = logging.getLogger("web.server")
+from core.logging_config import setup_logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -88,6 +87,14 @@ async def lifespan(app: FastAPI):
     import anyio
     await anyio.to_thread.run_sync(_warmup)
     yield
+
+    # Закрываем все соединения с БД во всех потоках при остановке сервера.
+
+    try:
+        from core.db.connector import connector
+        await anyio.to_thread.run_sync(connector.close_all)
+    except Exception:  # noqa: BLE001 — shutdown не должен падать из-за этого
+        logger.exception("Ошибка при закрытии подключений к БД на shutdown")
 
 
 app = FastAPI(title="DB Navigator Agent", docs_url="/api/docs", lifespan=lifespan)
@@ -150,7 +157,7 @@ def _run_stream(query: str, session_id: str) -> Iterator[str]:
     from core.observability.tracer import get_handler, flush
 
     graph = get_graph()
-    initial_state = {"user_query": query, "steps": []}
+    initial_state = {"user_query": query, "steps": [], "tools_used": []}
 
     handler = get_handler(session_id, query, tags=["web"])
     config = None
@@ -222,9 +229,60 @@ def _run_stream(query: str, session_id: str) -> Iterator[str]:
     yield _sse({"type": "done"})
 
 
+async def _run_stream_async(query: str, session_id: str):
+    """
+    Асинхронный мост к синхронному _run_stream().
+
+    _run_stream() — синхронный генератор: внутри него синхронный
+    graph.stream() и синхронный pyodbc через connector. 
+    Но сам ЭНДПОИНТ при этом async — это позволяет другим запросам 
+    и health-чеку продолжать обрабатываться.
+    """
+    import anyio
+
+    send_stream, receive_stream = anyio.create_memory_object_stream(max_buffer_size=64)
+
+    def _produce() -> None:
+        """Выполняется в отдельном потоке threadpool'а (через to_thread.run_sync)."""
+        try:
+            for frame in _run_stream(query, session_id):
+                anyio.from_thread.run(send_stream.send, frame)
+        except Exception as exc:  # noqa: BLE001
+            # _run_stream() сам перехватывает ошибки графа и всегда
+            # отдаёт error+done (см. её docstring). Сюда долетают только
+            # ошибки ВНЕ этого try - например, в самом формировании SSE-кадра
+            # (node_event/final_event) или в передаче через очередь. Без
+            # этого error-кадра клиент рискует зависнуть в состоянии
+            # "загрузка" без единого сигнала о том, что что-то пошло не так.
+            logger.exception("Ошибка в потоке стриминга _run_stream")
+            try:
+                anyio.from_thread.run(send_stream.send, _sse({
+                    "type": "error",
+                    "message": f"Внутренняя ошибка стрима: {exc}",
+                }))
+            except Exception:  # noqa: BLE001 — поток уже мог закрыться
+                pass
+        finally:
+            anyio.from_thread.run(send_stream.send, None)  # сигнал конца потока
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(anyio.to_thread.run_sync, _produce)
+
+        async with receive_stream:
+            async for frame in receive_stream:
+                if frame is None:
+                    break
+                yield frame
+
+
 @app.post("/api/chat")
-def chat(req: ChatRequest):
-    """Запускает агента и стримит шаги через SSE."""
+async def chat(req: ChatRequest):
+    """Запускает агента и стримит шаги через SSE.
+
+    Cам граф остаётся синхронным, но event loop сервера не блокируется 
+    на время его выполнения — это позволяет принимать и обрабатывать 
+    другие запросы (включая health-чек) параллельно с уже идущим прогоном агента.
+    """
     query = (req.query or "").strip()
     session_id = req.session_id or str(uuid.uuid4())
 
@@ -232,7 +290,7 @@ def chat(req: ChatRequest):
         return JSONResponse({"error": "Пустой запрос"}, status_code=400)
 
     return StreamingResponse(
-        _run_stream(query, session_id),
+        _run_stream_async(query, session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -245,11 +303,14 @@ def chat(req: ChatRequest):
 # GET /api/health — статус конфигурации и инфраструктуры
 # =============================================================
 
-@app.get("/api/health")
-def health():
+def _health_sync() -> dict:
     """
     Лёгкая проверка окружения для шапки интерфейса.
     Живой пинг LLM не делаем (это стоит токенов) — только конфигурацию.
+
+    Вызывается из async-обёртки health() через anyio.to_thread.run_sync 
+    — той же явной схемой, что и chat(), чтобы не блокировать event loop 
+    сервера на время сетевого похода.
     """
     from core.config import settings
 
@@ -295,6 +356,16 @@ def health():
         result["langfuse"] = False
 
     return result
+
+
+@app.get("/api/health")
+async def health():
+    """
+    Async-обёртка над _health_sync(). Эндпоинт сам по себе не блокируется
+    на время SELECT 1 к БД — см. docstring _health_sync().
+    """
+    import anyio
+    return await anyio.to_thread.run_sync(_health_sync)
 
 
 # =============================================================

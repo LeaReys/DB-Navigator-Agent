@@ -13,7 +13,6 @@ app.py = точка входа DB Navigator Agent.
 
 from __future__ import annotations
 
-import logging
 import sys
 import textwrap
 import time
@@ -22,11 +21,8 @@ import uuid
 from dotenv import load_dotenv
 load_dotenv() 
 
-# WARNING для сторонних библиотек, INFO для нашего кода
-logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-logging.getLogger("agent").setLevel(logging.INFO)
-logging.getLogger("llm").setLevel(logging.INFO)
-logging.getLogger("observability").setLevel(logging.INFO)
+from core.logging_config import setup_logging
+setup_logging()
 
 
 # =============================================================
